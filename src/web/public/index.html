@@ -34,6 +34,7 @@
         font-family: inherit; font-size: 13px; color: #1b1f27;
       }
       .week-nav .wed { font-size: 13px; font-weight: 700; color: #1b1f27; min-width: 148px; }
+      .empty-week { color: #9aa1ac; margin: 12px 0 4px; font-size: 13px; }
       .act.primary { border-color: #2d5be3; background: #2d5be3; color: #fff; font-weight: 700; }
       .hint { color: #7a8291; font-size: 13px; line-height: 20px; margin: 0 0 14px; }
       .toast {
@@ -251,7 +252,7 @@
           <button class="act" id="pdfBtn" type="button">PDF 저장</button>
         </div>
       </div>
-      <p class="hint">주간보고는 매주 수요일 기준(목~수)입니다. 날짜나 화살표로 이전 주를 볼 수 있습니다. 1·2·4·5번은 고친 뒤 저장·복사하세요.</p>
+      <p class="hint">주간보고는 매주 수요일(목~수)입니다. 1·2·4·5번은 그 주에 저장한 내용만 보입니다. 없는 주는 없음입니다. 3번 성과는 선택한 수요일 주간에 맞춰 최근 데이터를 보여 줍니다.</p>
 
       <div id="mail">
         <div class="mail-head">
@@ -468,13 +469,14 @@
       const svcColor = { visit: "#2d5be3", start: "#00a1ff", result: "#12b886" };
       const clickColor = { NAVER: "#0b6e3d", GOOGLE: "#1a73e8" };
       const SECTION_IDS = ["sec-progress", "sec-detail", "sec-next", "sec-note"];
-      const defaultSections = Object.fromEntries(SECTION_IDS.map((id) => [id, document.getElementById(id).innerHTML]));
+      const EMPTY_SECTION = '<p class="empty-week">없음</p>';
       let weekId = new URLSearchParams(location.search).get("week") || "";
       let weekList = [];
       let weekSnap = null;
       let liveBlog = null;
       let liveAds = null;
       let liveSvc = null;
+      let liveWbs = null;
       let blog = null;
       let ads = null;
       let svc = null;
@@ -1069,24 +1071,28 @@
       }
 
       function restoreEdits() {
+        const empty = Object.fromEntries(SECTION_IDS.map((id) => [id, EMPTY_SECTION]));
+        let src = empty;
+        if (weekSnap?.sections) src = { ...empty, ...weekSnap.sections };
         try {
           const saved = JSON.parse(localStorage.getItem(editKey()) || "null");
-          const src = saved || weekSnap?.sections || defaultSections;
-          for (const id of SECTION_IDS) {
-            if (src[id]) document.getElementById(id).innerHTML = src[id];
-          }
+          if (saved && weekList.includes(weekId)) src = { ...src, ...saved };
         } catch {}
+        for (const id of SECTION_IDS) {
+          document.getElementById(id).innerHTML = src[id] || EMPTY_SECTION;
+        }
       }
       function saveEdits() {
+        if (!weekList.includes(weekId) && !weekSnap?.sections) return;
         const data = {};
         for (const id of SECTION_IDS) data[id] = document.getElementById(id).innerHTML;
         localStorage.setItem(editKey(), JSON.stringify(data));
       }
       function applyLiveOrSnap() {
-        blog = weekSnap?.report || liveBlog;
-        ads = weekSnap?.ads || liveAds;
-        svc = weekSnap?.service || liveSvc;
-        if (weekSnap?.wbs) wbsData = weekSnap.wbs;
+        blog = liveBlog;
+        ads = liveAds;
+        svc = liveSvc;
+        wbsData = liveWbs || { sheets: [] };
       }
       function bindWeekNav() {
         const savedMark = weekList.includes(weekId) ? " · 저장됨" : "";
@@ -1607,7 +1613,8 @@
         liveBlog = b;
         liveAds = a;
         liveSvc = s;
-        wbsData = (snap && snap.wbs) || w || { sheets: [] };
+        liveWbs = w || { sheets: [] };
+        wbsData = liveWbs;
         applyLiveOrSnap();
         restoreEdits();
         render();
