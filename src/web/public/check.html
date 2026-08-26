@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>수집 확인 · T-ASSI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      :root {
+        --canvas: #ffffff;
+        --text: #424242;
+        --fg: #2f3438;
+        --muted: #828c94;
+        --action: #00a1ff;
+        --hairline: #e0e0e0;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--text);
+        font-family: "Pretendard Variable", sans-serif;
+        font-size: 15px;
+        line-height: 24px;
+        letter-spacing: -0.3px;
+      }
+      .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 20px 64px; }
+      .kicker { color: var(--muted); margin-bottom: 12px; }
+      h1 { font-size: 30px; line-height: 30px; font-weight: 400; letter-spacing: -0.3px; margin: 0 0 20px; color: var(--fg); }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 12px 0; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+      th { color: var(--muted); font-weight: 400; }
+      .note { color: var(--muted); display: block; margin-top: 6px; }
+      a { color: var(--action); text-decoration: none; font-weight: 700; font-size: 16px; line-height: 20px; }
+    </style>
+  </head>
+  <body>
+    <script src="site.js"></script>
+    <script src="nav.js"></script>
+    <div class="wrap">
+      <div class="kicker">수집 상태</div>
+      <h1>수집 확인</h1>
+      <table>
+        <thead><tr><th>채널</th><th>상태</th><th>기간 / 콘텐츠</th><th>수집 시각</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <script>
+      const labels = { TISTORY: "티스토리", VELOG: "벨로그", BRUNCH: "브런치" };
+      const when = (iso) => iso ? new Date(iso).toLocaleString("ko-KR") : "-";
+      fetch(window.TASSI.api("report")).then((r) => r.json()).then((report) => {
+        document.getElementById("rows").innerHTML = report.platforms.map((p) => {
+          const c = p.check || { ok: false, notes: ["점검 정보 없음"] };
+          const range = p.dateRange ? `${p.dateRange[0]} ~ ${p.dateRange[1]}` : "-";
+          return `<tr>
+            <td>${labels[p.platform]}</td>
+            <td>${c.ok ? "수집됨" : "확인 필요"}${c.notes.length ? `<span class="note">${c.notes.join(" ")}</span>` : ""}</td>
+            <td>${p.days ? range + ` · ${p.days}일` : "-"}${p.posts.length ? ` · 글 ${p.posts.length}` : ""}</td>
+            <td>${when(p.capturedAt)}<span class="note">${c.expectedUrl || ""}</span></td>
+          </tr>`;
+        }).join("");
+      });
+    </script>
+  </body>
+</html>

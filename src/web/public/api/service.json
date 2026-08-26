@@ -1,0 +1,1 @@
+{"generatedAt":"2026-08-26T23:09:19.544Z","notes":["ShipType 로그는 테이블 2개(visitors, events)와 뷰 timeline 입니다. SQL Editor에서 원본을 보세요.","셋업 테스트(/setup-check) 행은 화면에서 뺐습니다."],"visitors":[],"events":[]}

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>서비스 · T-ASSI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      :root {
+        --canvas: #ffffff;
+        --text: #424242;
+        --fg: #2f3438;
+        --muted: #828c94;
+        --action: #00a1ff;
+        --hairline: #e0e0e0;
+        --visit: #2d5be3;
+        --start: #00a1ff;
+        --result: #12b886;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--text);
+        font-family: "Pretendard Variable", sans-serif;
+        font-size: 15px;
+        line-height: 15px;
+        letter-spacing: -0.3px;
+        font-weight: 400;
+      }
+      .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 20px 64px; }
+      .kicker { color: var(--muted); font-size: 15px; margin-bottom: 12px; }
+      h1 { font-size: 30px; line-height: 30px; font-weight: 400; letter-spacing: -0.3px; margin: 0 0 8px; color: var(--fg); }
+      h2 { font-size: 16px; line-height: 24px; font-weight: 700; letter-spacing: -0.3px; margin: 28px 0 12px; color: var(--fg); }
+      .note { color: var(--muted); font-size: 13px; line-height: 20px; margin: 0 0 20px; }
+      .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px; }
+      article .label { color: var(--muted); font-size: 15px; line-height: 15px; }
+      article .value { font-size: 30px; line-height: 30px; font-weight: 400; margin-top: 6px; color: var(--fg); }
+      .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; }
+      .plot {
+        height: 180px;
+        display: flex;
+        align-items: flex-end;
+        gap: 6px;
+        border-bottom: 1px solid var(--hairline);
+        padding: 0 4px;
+      }
+      .col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+      .stack { display: flex; flex-direction: column-reverse; height: 100%; justify-content: flex-end; }
+      .bar { width: 100%; border-radius: 2px 2px 0 0; min-height: 0; }
+      .axis { display: flex; gap: 6px; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 12px; }
+      .axis span { flex: 1; text-align: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .legend { display: flex; gap: 14px; margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+      .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 1px; margin-right: 6px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 10px 8px 10px 0; border-bottom: 1px solid var(--hairline); font-size: 14px; line-height: 18px; vertical-align: top; }
+      th { color: var(--muted); font-weight: 400; }
+      .num { text-align: right; white-space: nowrap; }
+      .mono { font-size: 12px; color: var(--muted); word-break: break-all; }
+      .empty { color: var(--muted); padding: 24px 0; }
+      @media (max-width: 800px) {
+        .cards, .grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="kicker">ShipType 시뮬레이터</div>
+      <h1>서비스 이용자 현황</h1>
+      <p class="note" id="note"></p>
+      <div class="cards" id="cards"></div>
+      <h2>일별 이용</h2>
+      <div id="chart"></div>
+      <div class="grid">
+        <div>
+          <h2>퍼널</h2>
+          <div id="funnel"></div>
+        </div>
+        <div>
+          <h2>결과 분포</h2>
+          <div id="results"></div>
+        </div>
+      </div>
+      <h2>유입 (첫 UTM)</h2>
+      <div id="sources"></div>
+      <h2>최근 이벤트</h2>
+      <div id="timeline"></div>
+    </div>
+    <script src="site.js"></script>
+    <script src="nav.js"></script>
+    <script>
+      const FUNNEL = ["visit", "start", "result", "cta_click", "share", "save_image", "retry"];
+      const LABELS = {
+        visit: "인트로",
+        start: "시작하기",
+        result: "결과",
+        cta_click: "T-ASSI 살펴보기",
+        share: "공유",
+        save_image: "이미지 저장",
+        retry: "다시 하기",
+      };
+      const COLORS = { visit: "#2d5be3", start: "#00a1ff", result: "#12b886", cta_click: "#f86400", share: "#9b59b6", save_image: "#e0972d", retry: "#828c94" };
+      const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
+      const dash = (v) => (v == null || v === "" ? "—" : v);
+
+      function md(ymd) {
+        const [, m, d] = (ymd || "").split("-");
+        return `${Number(m)}/${Number(d)}`;
+      }
+      function niceCeil(n) {
+        if (n <= 0) return 1;
+        const pow = Math.pow(10, Math.floor(Math.log10(n)));
+        const d = n / pow;
+        const nice = d <= 1 ? 1 : d <= 2 ? 2 : d <= 5 ? 5 : 10;
+        return nice * pow;
+      }
+      function kstToday() {
+        return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+      }
+      function addDays(ymd, delta) {
+        const date = new Date(`${ymd}T12:00:00+09:00`);
+        date.setUTCDate(date.getUTCDate() + delta);
+        return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
+      }
+      function eachDay(from, to) {
+        const out = [];
+        for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
+        return out;
+      }
+      function table(headers, rows, empty) {
+        if (!rows.length) return `<p class="empty">${empty}</p>`;
+        return `<table><thead><tr>${headers.map((h) => `<th${h.num ? ' class="num"' : ""}>${h.label}</th>`).join("")}</tr></thead>
+          <tbody>${rows.map((row) => `<tr>${row.join("")}</tr>`).join("")}</tbody></table>`;
+      }
+
+      function render(report) {
+        document.getElementById("note").textContent = (report.notes || []).join(" ");
+        const events = report.events || [];
+        const visitors = report.visitors || [];
+        const plays = new Set(events.map((e) => e.playId).filter(Boolean));
+        const resultsN = events.filter((e) => e.eventName === "result").length;
+        document.getElementById("cards").innerHTML = [
+          ["방문자", visitors.length],
+          ["이벤트", events.length],
+          ["플레이", plays.size],
+          ["결과 화면", resultsN],
+        ].map(([label, value]) => `<article><div class="label">${label}</div><div class="value">${fmt(value)}</div></article>`).join("");
+
+        const today = kstToday();
+        const from = events.length ? events.reduce((min, e) => (e.date < min ? e.date : min), events[0].date) : addDays(today, -13);
+        const to = today < from ? from : today;
+        const span = eachDay(from, to).slice(-21);
+        const byDate = new Map(span.map((d) => [d, { visit: 0, start: 0, result: 0 }]));
+        for (const e of events) {
+          const row = byDate.get(e.date);
+          if (!row || !(e.eventName in row)) continue;
+          row[e.eventName] += 1;
+        }
+        const max = niceCeil(Math.max(1, ...[...byDate.values()].map((r) => r.visit + r.start + r.result)));
+        document.getElementById("chart").innerHTML = `
+          <div class="plot">${span.map((d) => {
+            const row = byDate.get(d);
+            const parts = ["visit", "start", "result"].map((k) => {
+              const h = ((row[k] || 0) / max) * 100;
+              return h < 0.4 ? "" : `<div class="bar" style="height:${h}%;background:${COLORS[k]}"></div>`;
+            }).join("");
+            return `<div class="col"><div class="stack">${parts}</div></div>`;
+          }).join("")}</div>
+          <div class="axis">${span.map((d) => `<span>${md(d)}</span>`).join("")}</div>
+          <div class="legend">
+            <span><i style="background:${COLORS.visit}"></i>인트로</span>
+            <span><i style="background:${COLORS.start}"></i>시작하기</span>
+            <span><i style="background:${COLORS.result}"></i>결과</span>
+          </div>`;
+
+        const funnelRows = FUNNEL.map((name) => {
+          const list = events.filter((e) => e.eventName === name);
+          const people = new Set(list.map((e) => e.visitorId)).size;
+          return [name, list.length, people];
+        }).filter((row) => row[1] || row[0] === "visit" || row[0] === "start" || row[0] === "result");
+        document.getElementById("funnel").innerHTML = table(
+          [{ label: "단계" }, { label: "횟수", num: true }, { label: "사람", num: true }],
+          funnelRows.map(([name, n, people]) => [
+            `<td>${LABELS[name] || name}</td>`,
+            `<td class="num">${fmt(n)}</td>`,
+            `<td class="num">${fmt(people)}</td>`,
+          ]),
+          "아직 이벤트가 없습니다.",
+        );
+
+        const resultMap = new Map();
+        for (const e of events) {
+          if (e.eventName !== "result") continue;
+          const key = e.resultName || "(이름 없음)";
+          resultMap.set(key, (resultMap.get(key) || 0) + 1);
+        }
+        const resultRows = [...resultMap.entries()].sort((a, b) => b[1] - a[1]);
+        document.getElementById("results").innerHTML = table(
+          [{ label: "결과" }, { label: "건수", num: true }],
+          resultRows.map(([name, n]) => [`<td>${name}</td>`, `<td class="num">${fmt(n)}</td>`]),
+          "아직 결과 이벤트가 없습니다.",
+        );
+
+        const srcMap = new Map();
+        for (const v of visitors) {
+          const key = [v.firstUtmSource || "(없음)", v.firstUtmCampaign || "—", v.firstUtmContent || "—"].join("\t");
+          srcMap.set(key, (srcMap.get(key) || 0) + 1);
+        }
+        const srcRows = [...srcMap.entries()].sort((a, b) => b[1] - a[1]);
+        document.getElementById("sources").innerHTML = table(
+          [{ label: "source" }, { label: "campaign" }, { label: "content" }, { label: "사람", num: true }],
+          srcRows.map(([key, n]) => {
+            const [s, c, t] = key.split("\t");
+            return [`<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
+          }),
+          "유입 캠페인이 아직 없습니다. 캠페인은 첫 UTM을 씁니다.",
+        );
+
+        const recent = events.slice(0, 100);
+        document.getElementById("timeline").innerHTML = table(
+          [{ label: "시각" }, { label: "이벤트" }, { label: "결과" }, { label: "visitor" }, { label: "유입" }],
+          recent.map((e) => [
+            `<td>${new Date(e.occurredAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
+            `<td>${LABELS[e.eventName] || e.eventName}</td>`,
+            `<td>${dash(e.resultName)}</td>`,
+            `<td class="mono">${e.visitorId}</td>`,
+            `<td>${dash(e.firstUtmSource || e.utmSource)}${e.firstUtmCampaign ? " · " + e.firstUtmCampaign : ""}</td>`,
+          ]),
+          "이벤트가 없습니다. 로컬에서 한 판 돌린 뒤 새로고침하세요.",
+        );
+      }
+
+      fetch(window.TASSI.api("service"))
+        .then((r) => r.json())
+        .then(render)
+        .catch((err) => {
+          document.getElementById("note").textContent = err.message || "불러오지 못했습니다.";
+        });
+    </script>
+  </body>
+</html>

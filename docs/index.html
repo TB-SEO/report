@@ -1,0 +1,1619 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>주간 업무 보고</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: #f2f3f5;
+        color: #333a45;
+        font-family: "Pretendard Variable", "Malgun Gothic", sans-serif;
+      }
+      .wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 72px; }
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 0 0 14px;
+      }
+      .grains { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+      button { font-family: inherit; letter-spacing: -0.3px; cursor: pointer; }
+      .grain, .act {
+        height: 32px; padding: 0 10px; border: 1px solid #e2e5e9; border-radius: 4px;
+        background: #fff; color: #1b1f27; font-size: 13px; line-height: 18px;
+      }
+      .week-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .week-nav input[type="date"] {
+        height: 32px; border: 1px solid #e2e5e9; border-radius: 4px; padding: 0 8px;
+        font-family: inherit; font-size: 13px; color: #1b1f27;
+      }
+      .week-nav .wed { font-size: 13px; font-weight: 700; color: #1b1f27; min-width: 148px; }
+      .act.primary { border-color: #2d5be3; background: #2d5be3; color: #fff; font-weight: 700; }
+      .hint { color: #7a8291; font-size: 13px; line-height: 20px; margin: 0 0 14px; }
+      .toast {
+        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        background: #1b1f27; color: #fff; padding: 10px 14px; border-radius: 6px;
+        font-size: 14px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .2s;
+        z-index: 50;
+      }
+      .toast.on { opacity: 1; }
+      #mail {
+        background: #fff;
+        border: 1px solid #e2e5e9;
+        border-radius: 8px;
+        overflow: hidden;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #333a45;
+      }
+      .mail-head { background: #2d5be3; padding: 28px 36px; color: #fff; }
+      .mail-head .ttl { font-size: 20px; font-weight: 700; line-height: 26px; }
+      .mail-head .sub { color: #dbe4ff; font-size: 13px; padding-top: 6px; }
+      .sec { padding: 28px 36px 8px; }
+      .sec.tight { padding-top: 18px; }
+      .sec.last { padding-bottom: 24px; }
+      .sec-title {
+        font-size: 16px; font-weight: 700; color: #1b1f27;
+        border-left: 4px solid #2d5be3; padding-left: 10px; line-height: 22px;
+      }
+      .sub-title { font-size: 13px; font-weight: 700; color: #4a5261; margin: 14px 0 8px; }
+      .sheet { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+      .sheet th, .sheet td { padding: 9px 10px; border: 1px solid #e2e5e9; vertical-align: middle; text-align: center; }
+      .sheet th { background: #f5f6f8; color: #4a5261; font-weight: 400; }
+      .sheet .ok { color: #2ea043; font-weight: 700; }
+      .sheet .ing { color: #e0972d; font-weight: 700; }
+      .sheet .ctr { text-align: center; }
+      .sheet .grp { font-weight: 700; text-align: center; }
+      .sheet.note { margin-top: 8px; font-size: 12.5px; }
+      .sheet.note th, .sheet.note td { text-align: left; }
+      .sheet.note .num, .sheet.note th.num { text-align: right; white-space: nowrap; }
+      .sheet.note .ctr { text-align: center; }
+      .sheet.note .grp { font-weight: 700; text-align: left; }
+      .sheet.note .sum { font-weight: 700; background: #f8f9fb; }
+      .list .lead { padding-bottom: 2px; }
+      .narrative { margin-top: 8px; }
+      .narrative .topic { font-weight: 700; color: #2d5be3; padding: 10px 0 2px; }
+      .narrative .topic:first-child { padding-top: 4px; }
+      .narrative .body { padding: 2px 0 4px 14px; line-height: 1.6; }
+      .narrative .bullets { margin: 2px 0 10px; padding: 0; list-style: none; }
+      .narrative .bullets > li { padding: 3px 0 3px 14px; line-height: 1.6; }
+      .narrative .bullets .sub { margin: 2px 0 4px; padding: 0; list-style: none; }
+      .narrative .bullets .sub > li { padding: 2px 0 2px 18px; color: #333a45; }
+      .list { margin: 8px 0 0; padding: 0; list-style: none; }
+      .list li { padding: 5px 0; }
+      .list .nest { margin: 2px 0 0; padding: 0; list-style: none; }
+      .list .nest li { padding: 3px 0 3px 18px; }
+      #sec-note > div { padding: 5px 0; }
+      #sec-note > .lead { padding-bottom: 2px; }
+      [contenteditable] { outline: none; }
+      [contenteditable]:focus { background: #f7f9ff; }
+      .perf { width: 100%; border-collapse: separate; border-spacing: 0; }
+      .chart-box {
+        width: 48%;
+        background: #fafbfc;
+        border: 1px solid #e2e5e9;
+        border-radius: 6px;
+        padding: 12px;
+        vertical-align: top;
+      }
+      .chart-cap { font-size: 11px; color: #9aa1ac; padding-bottom: 6px; }
+      .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 11px; color: #7a8291; }
+      .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 1px; margin-right: 5px; vertical-align: 0; }
+      .legend .ln {
+        display: inline-block; width: 12px; height: 0; border-top: 2px solid currentColor;
+        margin-right: 5px; vertical-align: 3px;
+      }
+      .gutter { width: 4%; }
+      .stats { width: 48%; vertical-align: top; padding-top: 2px; }
+      .stat-grid { width: 100%; border-collapse: separate; border-spacing: 8px 8px; margin: -8px; }
+      .stat {
+        width: 50%;
+        background: #f8f9fb;
+        border: 1px solid #e2e5e9;
+        border-radius: 6px;
+        padding: 14px 14px 12px;
+        vertical-align: top;
+      }
+      .stat-label { font-size: 11px; color: #7a8291; letter-spacing: 0.01em; }
+      .stat-value { font-size: 20px; font-weight: 700; color: #1b1f27; padding-top: 5px; letter-spacing: -0.4px; line-height: 26px; }
+      .stat-sub { font-size: 12px; color: #7a8291; padding-top: 5px; line-height: 16px; }
+      .stat-meta { font-size: 11px; color: #9aa1ac; padding-top: 4px; line-height: 15px; }
+      .up { color: #2ea043; }
+      .down { color: #d1242f; }
+      .flat { color: #9aa1ac; }
+      .notes { margin: 8px 0 6px; padding: 0; list-style: none; font-size: 12.5px; color: #333a45; }
+      .notes li { padding: 4px 0; line-height: 1.6; }
+      .hit { width: 100%; border-collapse: collapse; margin-top: 8px; }
+      .hit th, .hit td {
+        text-align: left; padding: 5px 6px 5px 0;
+        border-bottom: 1px solid #e2e5e9;
+        font-size: 12px; line-height: 16px; vertical-align: top;
+      }
+      .hit th { color: #7a8291; font-weight: 400; }
+      .hit .num { text-align: right; white-space: nowrap; padding-right: 0; }
+      .hit .plat { white-space: nowrap; color: #4a5261; }
+      .hit .title { word-break: break-word; }
+      .tag { font-weight: 400; margin-right: 4px; }
+      .tag.TISTORY { color: #f86400; }
+      .tag.VELOG { color: #12b886; }
+      .tag.BRUNCH { color: #00c6be; }
+      .tag.NAVER { color: #03c75a; }
+      .tag.GOOGLE { color: #4285f4; }
+      .mail-foot {
+        background: #f5f6f8; padding: 16px 36px;
+        border-top: 1px solid #e2e5e9; font-size: 11px; color: #9aa1ac;
+      }
+      .pdf-only { display: none; }
+      .pdf-only.measure {
+        display: block;
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        width: 1100px;
+      }
+      a { color: #2d5be3; text-decoration: none; }
+      @page { size: A4 landscape; margin: 8mm; }
+      @media print {
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .site-header, .toolbar, .hint, .toast, .print-hide { display: none !important; }
+        html, body { background: #fff; }
+        .wrap { max-width: none; padding: 0; }
+        #mail { border: 0; border-radius: 0; overflow: visible; }
+        #mail .pdf-sec1 { break-after: page; page-break-after: always; }
+        #mail .pdf-sec2 { padding-top: 4px; }
+        [contenteditable] { background: transparent !important; }
+        .pdf-only { display: block !important; }
+        .pdf-only.measure {
+          position: static !important;
+          left: auto !important;
+          width: auto !important;
+        }
+        .pdf-page {
+          break-before: page;
+          page-break-before: always;
+        }
+        .pdf-page h1 {
+          font-size: 18px; font-weight: 700; margin: 0 0 4px; color: #1b1f27;
+          border-left: 4px solid #2d5be3; padding-left: 10px;
+        }
+        .pdf-page .pdf-sub { color: #7a8291; font-size: 12px; margin: 0 0 14px; padding-left: 14px; }
+        .pdf-kpis { width: 100%; border-collapse: separate; border-spacing: 8px; margin: 0 0 12px -8px; }
+        .pdf-kpis td {
+          background: #f8f9fb; border: 1px solid #e2e5e9; border-radius: 6px;
+          padding: 10px 12px; width: 25%;
+        }
+        .pdf-kpis .k { font-size: 11px; color: #7a8291; }
+        .pdf-kpis .v { font-size: 18px; font-weight: 700; color: #1b1f27; padding-top: 4px; }
+        .pdf-kpis .s { font-size: 11px; color: #9aa1ac; padding-top: 3px; }
+        .pdf-grid { width: 100%; border-collapse: separate; border-spacing: 16px 0; margin-left: -16px; }
+        .pdf-grid > tbody > tr > td { vertical-align: top; width: 50%; }
+        .pdf-page table.data { width: 100%; border-collapse: collapse; }
+        .pdf-page table.data th, .pdf-page table.data td {
+          text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #e2e5e9; font-size: 12px;
+        }
+        .pdf-page table.data th { color: #7a8291; font-weight: 400; }
+        .pdf-page .num { text-align: right; white-space: nowrap; }
+        .pdf-page h2 { font-size: 14px; font-weight: 700; margin: 14px 0 8px; color: #1b1f27; }
+        .tag { font-weight: 400; margin-right: 6px; }
+        .tag.TISTORY { color: #f86400; }
+        .tag.VELOG { color: #12b886; }
+        .tag.BRUNCH { color: #00c6be; }
+        .tag.NAVER { color: #03c75a; }
+        .tag.GOOGLE { color: #4285f4; }
+        #pdf-wbs .pdf-wbs-page { overflow: hidden; width: 100%; }
+        #pdf-wbs .wbs-fit { overflow: hidden; width: 100% !important; max-width: 100%; height: auto !important; }
+        #pdf-wbs .grid {
+          display: grid;
+          width: 100% !important;
+          max-width: 100%;
+          transform: none !important;
+        }
+        #pdf-wbs .cell {
+          border-right: 1px solid #e4e7ea; border-bottom: 1px solid #e4e7ea;
+          padding: 0 5px; font-size: 11px; line-height: 14px; display: flex; align-items: center;
+          min-width: 0; overflow: hidden; background: #fff; color: #2f3438;
+          white-space: nowrap;
+        }
+        #pdf-wbs .cell.head { font-weight: 700; font-size: 10px; justify-content: center; text-align: center; white-space: nowrap; }
+        #pdf-wbs .cell.bar { background: #d9ead3 !important; box-shadow: inset 0 0 0 1px #b6d7a8; }
+        #pdf-wbs .cell.bar-done { background: #d9ead3 !important; box-shadow: inset 0 0 0 1px #b6d7a8; }
+        #pdf-wbs .cell.bar-ing { background: #fff2cc !important; box-shadow: inset 0 0 0 1px #f0e0a0; }
+        #pdf-wbs .cell.bar-wait { background: #f4cccc !important; box-shadow: inset 0 0 0 1px #e8b4b4; }
+        #pdf-wbs .cell.bar-plan { background: #fce5cd !important; box-shadow: inset 0 0 0 1px #f0c89a; }
+        #pdf-wbs .cell.holiday:not(.bar-done):not(.bar-ing):not(.bar-wait):not(.bar-plan) { background: #efefef !important; }
+        #pdf-wbs .cell.holiday.head { color: #c62828 !important; }
+        #pdf-wbs table.wbs-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+        #pdf-wbs table.wbs-table th, #pdf-wbs table.wbs-table td {
+          border: 1px solid #e2e5e9; padding: 7px 8px; font-size: 11px; line-height: 15px; vertical-align: middle;
+          white-space: nowrap; text-align: left;
+        }
+        #pdf-wbs table.wbs-table th { background: #f5f6f8; color: #4a5261; font-weight: 700; }
+        #pdf-wbs table.wbs-table tr.sec td {
+          background: #eef3ff; color: #2d5be3; font-weight: 700; font-size: 13px; padding: 10px 12px;
+        }
+        #pdf-wbs table.wbs-table td.change, #pdf-wbs table.wbs-table th.change,
+        #pdf-wbs table.wbs-table td.note, #pdf-wbs table.wbs-table th.note { white-space: normal; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="toolbar">
+        <div class="week-nav" id="periods"></div>
+        <div class="grains">
+          <button class="act primary" id="copyBtn" type="button">메일 복사</button>
+          <button class="act" id="pdfBtn" type="button">PDF 저장</button>
+        </div>
+      </div>
+      <p class="hint">주간보고는 매주 수요일 기준(목~수)입니다. 날짜나 화살표로 이전 주를 볼 수 있습니다. 1·2·4·5번은 고친 뒤 저장·복사하세요.</p>
+
+      <div id="mail">
+        <div class="mail-head">
+          <div class="ttl">주간 업무 보고</div>
+          <div class="sub" id="mailPeriod"></div>
+        </div>
+
+        <div class="sec pdf-sec1">
+          <div class="sec-title">1. 업무 진행 현황</div>
+          <div id="sec-progress" contenteditable="true">
+            <table class="sheet">
+              <thead>
+                <tr>
+                  <th>업무</th>
+                  <th>세부 업무</th>
+                  <th>진행률</th>
+                  <th>완료 예정</th>
+                  <th>실제 완료</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="grp" rowspan="2">T-ASSI 블로그<br>콘텐츠 운영</td>
+                  <td>게시글 이미지 오류 수정 및 유지보수</td>
+                  <td class="ok">100%</td>
+                  <td class="ctr">8/26</td>
+                  <td class="ctr">8/25</td>
+                </tr>
+                <tr>
+                  <td>Duolingo 테스트 자동화 사례 콘텐츠 작성</td>
+                  <td class="ing">진행 중</td>
+                  <td class="ctr">8/26</td>
+                  <td class="ctr">-</td>
+                </tr>
+                <tr>
+                  <td class="grp" rowspan="3">시뮬레이션 서비스<br>개선 및 배포</td>
+                  <td>상황 중심 결과 구조 개선 및 유지보수</td>
+                  <td class="ok">100%</td>
+                  <td class="ctr">8/26</td>
+                  <td class="ctr">8/26</td>
+                </tr>
+                <tr>
+                  <td>서비스 배포 (Fly.io)</td>
+                  <td class="ok">100%</td>
+                  <td class="ctr">8/28</td>
+                  <td class="ctr">8/26</td>
+                </tr>
+                <tr>
+                  <td>전환 추적 관리</td>
+                  <td class="ing">60%</td>
+                  <td class="ctr">8/28</td>
+                  <td class="ctr">-</td>
+                </tr>
+                <tr>
+                  <td class="grp" rowspan="2">Facebook<br>콘텐츠 광고</td>
+                  <td>Duolingo 게시글 콘텐츠 제작 및 홍보</td>
+                  <td class="ing">30%</td>
+                  <td class="ctr">8/28</td>
+                  <td class="ctr">-</td>
+                </tr>
+                <tr>
+                  <td>시뮬레이션 서비스 콘텐츠 제작 및 홍보</td>
+                  <td class="ing">40%</td>
+                  <td class="ctr">8/27</td>
+                  <td class="ctr">-</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sec pdf-sec2">
+          <div class="sec-title">2. 상세 현황</div>
+          <div id="sec-detail" class="narrative" contenteditable="true">
+            <div class="topic">1) T-ASSI 블로그 운영</div>
+            <ul class="bullets">
+              <li>- 블로그 게시글 내 이미지 깨짐 현상 수정 완료</li>
+              <li>- Duolingo 테스트 자동화 사례 게시글 초안 작성
+                <ul class="sub">
+                  <li>- 테스트 자동화 사례를 기반으로 장문 콘텐츠 구성</li>
+                  <li>- 게시 전 검토를 위해 초안 PDF 및 미리보기 링크 공유</li>
+                  <li>- 미리보기 링크 : <a href="https://tbell.tistory.com/13" target="_blank" rel="noopener">https://tbell.tistory.com/13</a></li>
+                  <li>- 비밀번호 : tbell0518</li>
+                </ul>
+              </li>
+            </ul>
+            <div class="topic">2) 시뮬레이션 서비스 개선 및 배포</div>
+            <ul class="bullets">
+              <li>- 기존 사람 중심 결과 방식에서 상황 중심 결과 방식으로 결과 구조 개선 완료</li>
+              <li>- Fly.io 환경으로 서비스 배포 완료</li>
+            </ul>
+            <div class="topic">3) Facebook 콘텐츠 광고</div>
+            <ul class="bullets">
+              <li>- 시뮬레이션 서비스 홍보를 위한 Facebook 게시 콘텐츠 초안 작성</li>
+              <li>- 게시 및 광고 진행 전 검토를 위해 콘텐츠 이미지 초안 첨부</li>
+              <li>- Duolingo 게시글은 최종 확정 후 별도 홍보 콘텐츠 제작 및 게시 예정</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sec tight print-hide">
+          <div class="sec-title">3. 성과 보고 (광고 · 블로그 · 서비스)</div>
+          <div id="sec-perf"></div>
+        </div>
+
+        <div class="sec print-hide">
+          <div class="sec-title">4. 향후 진행 일정</div>
+          <ul id="sec-next" class="list" contenteditable="true">
+            <li>- Duolingo 게시글 검토 내용 반영 및 최종 게시</li>
+            <li>- Duolingo 게시글 Facebook 콘텐츠 게시 및 홍보 진행</li>
+            <li>- 시뮬레이션 콘텐츠 Facebook 게시 및 홍보 진행</li>
+          </ul>
+        </div>
+
+        <div class="sec last print-hide">
+          <div class="sec-title">5. 참고 사항</div>
+          <div id="sec-note" class="list" contenteditable="true">
+            <div>- 전체 WBS, 게시글 작성 WBS 및 유지보수 현황은 아래 링크에서 확인 가능합니다.</div>
+            <ul class="nest">
+              <li>- Google Sheets : <a href="wbs.html">WBS 및 유지보수 현황</a></li>
+            </ul>
+            <div>- 금주 광고 및 블로그 운영 현황에 대한 상세 주간보고 자료는 PDF로 첨부드립니다.</div>
+            <div class="lead">- 전문가 플랫폼 초기 등록 시 결제했던 3만원 캐시 소진을 위해 견적 응대를 진행하였으며, 현황은 아래와 같습니다.</div>
+            <table class="sheet note">
+              <thead>
+                <tr>
+                  <th>구분</th>
+                  <th>분야</th>
+                  <th class="num">건수</th>
+                  <th>비고</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="grp" rowspan="2">전체 견적</td>
+                  <td>데이터 가공 및 라벨링</td>
+                  <td class="num"><b>16건</b></td>
+                  <td>전체 견적의 80%</td>
+                </tr>
+                <tr>
+                  <td>QA/테스트</td>
+                  <td class="num"><b>4건</b></td>
+                  <td>전체 견적의 20%</td>
+                </tr>
+                <tr class="sum">
+                  <td class="grp"><b>전체</b></td>
+                  <td></td>
+                  <td class="num"><b>20건</b></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="grp" rowspan="2">48시간 미열람</td>
+                  <td>데이터 가공 및 라벨링</td>
+                  <td class="num"><b>7건</b></td>
+                  <td>견적 미확인 후 캐시 환불</td>
+                </tr>
+                <tr>
+                  <td>QA/테스트</td>
+                  <td class="num"><b>1건</b></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="grp" rowspan="2">견적 확인 후 추가 응답 없음</td>
+                  <td>데이터 가공 및 라벨링</td>
+                  <td class="num"><b>3건</b></td>
+                  <td>견적 확인 후 별도 답변 없음</td>
+                </tr>
+                <tr>
+                  <td>QA/테스트</td>
+                  <td class="num"><b>2건</b></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td class="grp">추가 대화 진행</td>
+                  <td>데이터 가공 및 라벨링</td>
+                  <td class="num"><b>4건</b></td>
+                  <td>자료 전달·추가 문의 등</td>
+                </tr>
+                <tr>
+                  <td class="grp">다른 고수 고용</td>
+                  <td>데이터 가공 및 라벨링</td>
+                  <td class="num"><b>2건</b></td>
+                  <td>타 고수 선택</td>
+                </tr>
+                <tr>
+                  <td class="grp">채팅방 이탈</td>
+                  <td>QA/테스트</td>
+                  <td class="num"><b>1건</b></td>
+                  <td>상담 종료</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="mail-foot print-hide" id="mailFoot"></div>
+      </div>
+      <div class="pdf-only">
+        <section class="pdf-page" id="pdf-blog"></section>
+        <section class="pdf-page" id="pdf-blog-days"></section>
+        <section class="pdf-page" id="pdf-ads"></section>
+        <section class="pdf-page" id="pdf-ads-days"></section>
+        <div id="pdf-wbs"></div>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="site.js"></script>
+    <script src="nav.js"></script>
+    <script>
+      const platBlog = { TISTORY: "티스토리", VELOG: "벨로그", BRUNCH: "브런치" };
+      const platAds = { NAVER: "네이버", GOOGLE: "구글" };
+      const blogColor = { TISTORY: "#f86400", VELOG: "#12b886", BRUNCH: "#00c6be" };
+      const adsColor = { NAVER: "#03c75a", GOOGLE: "#4285f4" };
+      const svcColor = { visit: "#2d5be3", start: "#00a1ff", result: "#12b886" };
+      const clickColor = { NAVER: "#0b6e3d", GOOGLE: "#1a73e8" };
+      const SECTION_IDS = ["sec-progress", "sec-detail", "sec-next", "sec-note"];
+      const defaultSections = Object.fromEntries(SECTION_IDS.map((id) => [id, document.getElementById(id).innerHTML]));
+      let weekId = new URLSearchParams(location.search).get("week") || "";
+      let weekList = [];
+      let weekSnap = null;
+      let liveBlog = null;
+      let liveAds = null;
+      let liveSvc = null;
+      let blog = null;
+      let ads = null;
+      let svc = null;
+      let wbsData = null;
+
+      const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
+      const won = (n) => `${fmt(Math.round(n || 0))}원`;
+      const fmt1 = (n) => Number(n || 0).toLocaleString("ko-KR", { maximumFractionDigits: 1 });
+
+      function kstToday() {
+        return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+      }
+      function addDays(ymd, delta) {
+        const date = new Date(`${ymd}T12:00:00+09:00`);
+        date.setUTCDate(date.getUTCDate() + delta);
+        return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
+      }
+      function lastWednesday(ymd) {
+        const dow = new Date(`${ymd}T12:00:00+09:00`).getUTCDay();
+        return addDays(ymd, -((dow + 4) % 7));
+      }
+      function weekRange(wed) {
+        return { from: addDays(wed, -6), to: wed };
+      }
+      function weekStart(ymd) {
+        const date = new Date(`${ymd}T12:00:00+09:00`);
+        const offset = (date.getUTCDay() + 6) % 7;
+        return addDays(ymd, -offset);
+      }
+      function editKey() {
+        return `tassi-week-${weekId}`;
+      }
+      function detailRange() {
+        return { from: addDays(weekId, -19), to: weekId };
+      }
+      function prevRange(from, to) {
+        const days = Math.round((new Date(`${to}T12:00:00+09:00`) - new Date(`${from}T12:00:00+09:00`)) / 86400000) + 1;
+        return { from: addDays(from, -days), to: addDays(from, -1) };
+      }
+      function eachDay(from, to) {
+        const out = [];
+        for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
+        return out;
+      }
+      function md(ymd) {
+        const [, m, d] = (ymd || "").split("-");
+        return `${Number(m)}/${Number(d)}`;
+      }
+      function yoil(ymd) {
+        return "일월화수목금토"[new Date(`${ymd}T12:00:00+09:00`).getUTCDay()];
+      }
+      function periodTitle(from, to) {
+        return `기간 : ${from} (${yoil(from)}) ~ ${to} (${yoil(to)})`;
+      }
+      function inRange(date, from, to) {
+        return date >= from && date <= to;
+      }
+      function niceCeil(n) {
+        if (n <= 0) return 1;
+        const pow = Math.pow(10, Math.floor(Math.log10(n)));
+        const d = n / pow;
+        const nice = d <= 1 ? 1 : d <= 2 ? 2 : d <= 5 ? 5 : 10;
+        return nice * pow;
+      }
+      function delta(cur, prev) {
+        if (prev == null || prev === 0) {
+          if (!cur) return { cls: "flat", text: "비교 없음" };
+          return { cls: "up", text: "▲ 신규" };
+        }
+        const pct = Math.round(((cur - prev) / prev) * 100);
+        if (pct === 0) return { cls: "flat", text: "전 기간 동일" };
+        return { cls: pct > 0 ? "up" : "down", text: `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}% 전 기간` };
+      }
+
+      function blogViews(from, to) {
+        const byPlat = { TISTORY: 0, VELOG: 0, BRUNCH: 0 };
+        const posts = new Map();
+        const keywords = new Map();
+        const sources = new Map();
+        const daily = new Map();
+        let lifetime = 0;
+        for (const platform of blog?.platforms || []) {
+          lifetime += platform.totalViews || 0;
+          for (const row of platform.snapshots || []) {
+            if (!inRange(row.date, from, to)) continue;
+            if (!daily.has(row.date)) daily.set(row.date, { TISTORY: 0, VELOG: 0, BRUNCH: 0 });
+            const views = row.views || 0;
+            daily.get(row.date)[platform.platform] += views;
+            byPlat[platform.platform] += views;
+            for (const post of row.popularPosts || []) {
+              const id = post.url || post.title;
+              if (!id) continue;
+              const prev = posts.get(id);
+              posts.set(id, {
+                title: post.title || prev?.title,
+                url: post.url || prev?.url,
+                views: (prev?.views || 0) + (post.views || 0),
+                platform: platform.platform,
+              });
+            }
+            for (const kw of row.inflowKeywords || []) {
+              if (!kw.keyword || !kw.views) continue;
+              keywords.set(kw.keyword, (keywords.get(kw.keyword) || 0) + kw.views);
+            }
+            for (const src of row.sources || []) {
+              if (!src.sourceName || !src.views) continue;
+              sources.set(src.sourceName, (sources.get(src.sourceName) || 0) + src.views);
+            }
+          }
+        }
+        return {
+          total: byPlat.TISTORY + byPlat.VELOG + byPlat.BRUNCH,
+          byPlat,
+          lifetime,
+          topPosts: [...posts.values()].sort((a, b) => b.views - a.views),
+          topKw: [...keywords.entries()].map(([name, views]) => ({ name, views })).sort((a, b) => b.views - a.views),
+          sources: [...sources.entries()].map(([name, views]) => ({ name, views })).sort((a, b) => b.views - a.views),
+          daily,
+        };
+      }
+      function adsDays(from, to) {
+        const empty = { impressions: 0, clicks: 0, cost: 0 };
+        const daily = [];
+        const byPlat = { NAVER: { ...empty }, GOOGLE: { ...empty } };
+        let impressions = 0, clicks = 0, cost = 0;
+        for (const row of ads?.days || []) {
+          if (!inRange(row.date, from, to)) continue;
+          const naver = row.naver || empty;
+          const google = row.google || empty;
+          const day = {
+            date: row.date,
+            naver: { impressions: naver.impressions || 0, clicks: naver.clicks || 0, cost: naver.cost || 0 },
+            google: { impressions: google.impressions || 0, clicks: google.clicks || 0, cost: google.cost || 0 },
+          };
+          day.impressions = day.naver.impressions + day.google.impressions;
+          day.clicks = day.naver.clicks + day.google.clicks;
+          day.cost = day.naver.cost + day.google.cost;
+          daily.push(day);
+          impressions += day.impressions;
+          clicks += day.clicks;
+          cost += day.cost;
+          for (const id of ["NAVER", "GOOGLE"]) {
+            byPlat[id].impressions += day[id.toLowerCase()].impressions;
+            byPlat[id].clicks += day[id.toLowerCase()].clicks;
+            byPlat[id].cost += day[id.toLowerCase()].cost;
+          }
+        }
+        return {
+          impressions, clicks, cost,
+          ctr: impressions ? (clicks / impressions) * 100 : 0,
+          cpc: clicks ? cost / clicks : 0,
+          byPlat, daily,
+        };
+      }
+      function metricFromByDate(byDate, from, to) {
+        const next = { impressions: 0, clicks: 0, cost: 0, ctr: 0, cpc: 0 };
+        if (!byDate) return next;
+        for (const [date, row] of Object.entries(byDate)) {
+          if (!inRange(date, from, to)) continue;
+          next.impressions += (Array.isArray(row) ? row[0] : row.impressions) || 0;
+          next.clicks += (Array.isArray(row) ? row[1] : row.clicks) || 0;
+          next.cost += (Array.isArray(row) ? row[2] : row.cost) || 0;
+        }
+        next.ctr = next.impressions ? (next.clicks / next.impressions) * 100 : 0;
+        next.cpc = next.clicks ? next.cost / next.clicks : 0;
+        return next;
+      }
+      function isJunkKeyword(name) {
+        return /^(on\/?off|대시보드|현재\s*입찰가|광고\s*연관|클릭\s*기대|품질지수|품질평가|노출수|클릭수|클릭률)/i.test((name || "").trim());
+      }
+      function isJunkGroup(name) {
+        return /^(광고그룹|그룹|대시보드)?$/i.test((name || "").trim());
+      }
+      function finish(m) {
+        m.ctr = m.impressions ? (m.clicks / m.impressions) * 100 : 0;
+        m.cpc = m.clicks ? m.cost / m.clicks : 0;
+        return m;
+      }
+      function campaignsIn(from, to) {
+        const rows = [];
+        for (const camp of ads?.campaigns || []) {
+          const groups = camp.groups || [];
+          const fromCamp = metricFromByDate(camp.byDate, from, to);
+          const fromKw = groups.flatMap((g) => g.keywords || [])
+            .filter((kw) => !isJunkKeyword(kw.name))
+            .reduce((acc, kw) => {
+              const m = metricFromByDate(kw.byDate, from, to);
+              acc.impressions += m.impressions;
+              acc.clicks += m.clicks;
+              acc.cost += m.cost;
+              return acc;
+            }, { impressions: 0, clicks: 0, cost: 0 });
+          const used = fromCamp.impressions || fromCamp.clicks || fromCamp.cost ? fromCamp : fromKw;
+          if (!used.impressions && !used.clicks && !used.cost) continue;
+          rows.push(finish({ name: camp.name, platform: camp.platform, ...used }));
+        }
+        return rows.sort((a, b) => b.clicks - a.clicks || b.cost - a.cost);
+      }
+      function groupsIn(from, to) {
+        const rows = [];
+        for (const camp of ads?.campaigns || []) {
+          for (const group of camp.groups || []) {
+            if (isJunkGroup(group.name)) continue;
+            const fromGroup = metricFromByDate(group.byDate, from, to);
+            const fromKw = (group.keywords || []).filter((kw) => !isJunkKeyword(kw.name))
+              .reduce((acc, kw) => {
+                const m = metricFromByDate(kw.byDate, from, to);
+                acc.impressions += m.impressions;
+                acc.clicks += m.clicks;
+                acc.cost += m.cost;
+                return acc;
+              }, { impressions: 0, clicks: 0, cost: 0 });
+            const used = fromGroup.impressions || fromGroup.clicks || fromGroup.cost ? fromGroup : fromKw;
+            if (!used.impressions && !used.clicks && !used.cost) continue;
+            rows.push(finish({ campaign: camp.name, name: group.name, platform: camp.platform, ...used }));
+          }
+        }
+        return rows.sort((a, b) => b.clicks - a.clicks || b.cost - a.cost);
+      }
+      function keywordsIn(from, to) {
+        const rows = [];
+        for (const camp of ads?.campaigns || []) {
+          for (const group of camp.groups || []) {
+            for (const kw of group.keywords || []) {
+              if (isJunkKeyword(kw.name)) continue;
+              const m = metricFromByDate(kw.byDate, from, to);
+              if (!m.impressions && !m.clicks && !m.cost) continue;
+              rows.push(finish({ name: kw.name, campaign: camp.name, platform: camp.platform, ...m }));
+            }
+          }
+        }
+        return rows.sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
+      }
+      function serviceIn(from, to) {
+        const events = (svc?.events || []).filter((e) => inRange(e.date, from, to));
+        const visitors = new Set(events.map((e) => e.visitorId));
+        const plays = new Set(events.map((e) => e.playId).filter(Boolean));
+        const funnel = {};
+        const people = {};
+        const results = new Map();
+        const daily = new Map();
+        for (const e of events) {
+          funnel[e.eventName] = (funnel[e.eventName] || 0) + 1;
+          if (!people[e.eventName]) people[e.eventName] = new Set();
+          people[e.eventName].add(e.visitorId);
+          if (e.eventName === "result") {
+            const name = e.resultName || "(이름 없음)";
+            results.set(name, (results.get(name) || 0) + 1);
+          }
+          if (!daily.has(e.date)) daily.set(e.date, { visit: 0, start: 0, result: 0 });
+          if (e.eventName in daily.get(e.date)) daily.get(e.date)[e.eventName] += 1;
+        }
+        return {
+          events: events.length,
+          visitors: visitors.size,
+          plays: plays.size,
+          results: events.filter((e) => e.eventName === "result").length,
+          funnel,
+          people,
+          resultRows: [...results.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4),
+          daily,
+        };
+      }
+      function lifetimeTopPosts(n = 2) {
+        return (blog?.platforms || [])
+          .flatMap((p) => (p.posts || []).map((post) => ({
+            title: post.title,
+            url: post.url,
+            views: post.views || 0,
+            publishedAt: post.publishedAt || "",
+            platform: p.platform,
+          })))
+          .filter((p) => (p.views || 0) > 0)
+          .sort((a, b) => (b.views || 0) - (a.views || 0) || String(b.publishedAt).localeCompare(String(a.publishedAt)))
+          .slice(0, n);
+      }
+      function bestCampaign(camps) {
+        const eligible = camps.filter((c) => (c.impressions || 0) >= 20 || (c.clicks || 0) >= 2);
+        const pool = eligible.length ? eligible : camps;
+        return [...pool].sort((a, b) => (b.ctr || 0) - (a.ctr || 0) || (b.clicks || 0) - (a.clicks || 0))[0];
+      }
+      function topKeywordsByPlat(kws, platform, n) {
+        return kws
+          .filter((k) => k.platform === platform && ((k.clicks || 0) > 0 || (k.impressions || 0) > 0))
+          .sort((a, b) => (b.clicks || 0) - (a.clicks || 0) || (b.impressions || 0) - (a.impressions || 0))
+          .slice(0, n);
+      }
+
+      function svgChart({ rows, keys, colors, lines = [], lineColors = {}, width = 400, height = 190 }) {
+        const L = 36, R = lines.length ? 36 : 12, T = 10, B = 26;
+        const plotW = width - L - R, plotH = height - T - B;
+        const stackMax = Math.max(1, ...rows.map((r) => keys.reduce((s, k) => s + (r.stack[k] || 0), 0)));
+        const lineMax = lines.length ? Math.max(1, ...rows.map((r) => lines.reduce((s, k) => s + (r.line[k] || 0), 0))) : 1;
+        const yMax = niceCeil(stackMax);
+        const yLine = niceCeil(lineMax);
+        const n = Math.max(1, rows.length);
+        const slot = plotW / n;
+        const barW = Math.min(36, Math.max(8, slot * 0.58));
+        const grid = [1, 0.5, 0].map((t, i) => {
+          const y = T + plotH * (1 - t);
+          const left = fmt(Math.round(yMax * t));
+          const right = lines.length ? fmt(Math.round(yLine * t)) : "";
+          return `<line x1="${L}" y1="${y.toFixed(1)}" x2="${width - R}" y2="${y.toFixed(1)}" stroke="${i === 2 ? "#d7dbe2" : "#eef0f3"}" stroke-width="1"/>
+            <text x="${L - 4}" y="${(y + 3).toFixed(1)}" font-size="9" fill="#8a90a0" text-anchor="end" font-family="Arial, sans-serif">${left}</text>
+            ${right ? `<text x="${width - R + 4}" y="${(y + 3).toFixed(1)}" font-size="9" fill="#8a90a0" text-anchor="start" font-family="Arial, sans-serif">${right}</text>` : ""}`;
+        }).join("");
+        let bars = "";
+        let labels = "";
+        const pts = Object.fromEntries(lines.map((k) => [k, []]));
+        rows.forEach((row, i) => {
+          const cx = L + slot * i + slot / 2;
+          const x = cx - barW / 2;
+          let y = T + plotH;
+          keys.forEach((k) => {
+            const h = ((row.stack[k] || 0) / yMax) * plotH;
+            if (h < 0.6) return;
+            y -= h;
+            bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${colors[k]}"/>`;
+          });
+          labels += `<text x="${cx.toFixed(1)}" y="${height - 8}" font-size="9" fill="#8a90a0" text-anchor="middle" font-family="Arial, sans-serif">${row.label}</text>`;
+          lines.forEach((k) => {
+            const ly = T + plotH - ((row.line[k] || 0) / yLine) * plotH;
+            pts[k].push(`${cx.toFixed(1)},${ly.toFixed(1)}`);
+          });
+        });
+        const polylines = lines.map((k) =>
+          `<polyline fill="none" stroke="${lineColors[k]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${pts[k].join(" ")}"/>`
+        ).join("");
+        return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="display:block;max-width:100%;height:auto">${grid}${bars}${polylines}${labels}</svg>`;
+      }
+
+      function parseA1(ref) {
+        const m = String(ref).match(/^([A-Z]+)(\d+)$/i);
+        if (!m) return null;
+        let col = 0;
+        for (const ch of m[1].toUpperCase()) col = col * 26 + (ch.charCodeAt(0) - 64);
+        return { r: Number(m[2]) - 1, c: col - 1 };
+      }
+      function childrenOf(levels, i) {
+        const limit = levels[i] || 0;
+        const kids = [];
+        for (let j = i + 1; j < levels.length; j++) {
+          if ((levels[j] || 0) <= limit) break;
+          kids.push(j);
+        }
+        return kids;
+      }
+      function parentOf(levels, i, min) {
+        const limit = levels[i] || 0;
+        for (let j = i - 1; j >= min; j--) {
+          if ((levels[j] || 0) < limit) return j;
+        }
+        return -1;
+      }
+      function visibleList(levels, collapsed, locked, length) {
+        const out = [];
+        for (let i = 0; i < length; i++) {
+          if (i < locked) { out.push(i); continue; }
+          let hide = false;
+          let p = parentOf(levels, i, locked);
+          while (p >= 0) {
+            if (collapsed.has(p)) { hide = true; break; }
+            p = parentOf(levels, p, locked);
+          }
+          if (!hide) out.push(i);
+        }
+        return out;
+      }
+      function collapseTo(levels, locked, k) {
+        const collapsed = new Set();
+        levels.forEach((_, i) => {
+          if (i >= locked && childrenOf(levels, i).length && (levels[i] || 0) >= k - 1) collapsed.add(i);
+        });
+        return collapsed;
+      }
+      function renderWbsPdf() {
+        const target = document.getElementById("pdf-wbs");
+        const sheets = (wbsData?.sheets || []).filter((s) => s.name !== "-");
+        if (!sheets.length) {
+          target.innerHTML = `<section class="pdf-page"><h1>WBS</h1><p class="pdf-sub">WBS 데이터를 불러오지 못했습니다.</p></section>`;
+          return;
+        }
+        const order = ["WBS", "Content", "유지보수"];
+        const sorted = [...sheets].sort((a, b) => {
+          const ai = order.indexOf(a.name);
+          const bi = order.indexOf(b.name);
+          return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+        });
+        target.innerHTML = sorted.map((sheet) =>
+          `<section class="pdf-page pdf-wbs-page">${sheetHtml(sheet)}</section>`
+        ).join("");
+      }
+      function sheetHtml(sheet) {
+        const esc = (value) => String(value).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+        const parsed = sheet.freeze && parseA1(sheet.freeze);
+        const isTable = !parsed;
+        if (isTable) {
+          let used = 0;
+          for (const row of sheet.rows || []) {
+            for (let c = 0; c < (row?.length || 0); c++) {
+              if (row[c]?.v != null && String(row[c].v).trim()) used = Math.max(used, c + 1);
+            }
+          }
+          used = Math.max(used, 1);
+          const headers = [];
+          let body = "";
+          for (let r = 0; r < sheet.maxRow; r++) {
+            const cells = sheet.rows[r] || [];
+            const vals = Array.from({ length: used }, (_, c) => cells[c]?.v == null ? "" : String(cells[c].v));
+            const filled = vals.map((v) => v.trim()).filter(Boolean);
+            if (!filled.length) continue;
+            if (filled.length === 1 && /^\d+$/.test(filled[0]) && !vals.slice(1).some((v) => v.trim())) continue;
+            const first = vals[0].trim();
+            const section = first && !/^no\.?$/i.test(first) && !/^\d+$/.test(first) && vals.slice(1).every((v) => !v.trim());
+            if (section) {
+              body += `<tr class="sec"><td colspan="${used}">${esc(first)}</td></tr>`;
+              continue;
+            }
+            const isHead = /^no\.?$/i.test(first);
+            if (isHead) headers.splice(0, headers.length, ...vals);
+            const tag = isHead ? "th" : "td";
+            body += `<tr>${vals.map((v, i) => {
+              const h = headers[i] || "";
+              const cls = /주요|변경사항/.test(h) || i === 3 ? "change" : /비고/.test(h) || i === 6 ? "note" : "";
+              return `<${tag}${cls ? ` class="${cls}"` : ""}>${esc(v)}</${tag}>`;
+            }).join("")}</tr>`;
+          }
+          return `<h1>${esc(sheet.name)}</h1><p class="pdf-sub">배포·변경 이력</p><table class="wbs-table">${body}</table>`;
+        }
+        const rowL = (sheet.outline?.rows || []).map((item) => item.level || 0);
+        const colL = (sheet.outline?.cols || []).map((item) => item.level || 0);
+        const freeze = parsed;
+        const headRows = freeze.r || 3;
+        const freezeCol = freeze.c;
+        const rowItems = sheet.outline?.rows || [];
+        const colItems = sheet.outline?.cols || [];
+        function outlineGroups(levels, summaryAfter) {
+          const groups = [];
+          const maxL = levels.length ? Math.max(0, ...levels) : 0;
+          for (let L = 1; L <= maxL; L++) {
+            let i = 0;
+            while (i < levels.length) {
+              if ((levels[i] || 0) < L) { i++; continue; }
+              const start = i;
+              while (i < levels.length && (levels[i] || 0) >= L) i++;
+              const end = i - 1;
+              const summary = summaryAfter ? end + 1 : start - 1;
+              if (summary >= 0 && summary < levels.length && (levels[summary] || 0) < L) {
+                groups.push({ id: `${L}:${start}:${end}`, summary, start, end });
+              }
+            }
+          }
+          return groups;
+        }
+        function hideByGroups(groups, collapsedIds, length, locked) {
+          const hide = new Set();
+          for (const g of groups) {
+            if (!collapsedIds.has(g.id)) continue;
+            for (let i = g.start; i <= g.end; i++) if (i >= locked) hide.add(i);
+          }
+          const out = [];
+          for (let i = 0; i < length; i++) if (i < locked || !hide.has(i)) out.push(i);
+          return out;
+        }
+        const rowGroups = outlineGroups(rowL, !!sheet.outline?.summaryBelow);
+        const colGroups = outlineGroups(colL, !!sheet.outline?.summaryRight);
+        const collapsedRows = new Set(rowGroups.filter((g) => rowItems[g.summary]?.collapsed).map((g) => g.id));
+        const collapsedCols = new Set(colGroups.filter((g) => colItems[g.summary]?.collapsed).map((g) => g.id));
+        const visRows = hideByGroups(rowGroups, collapsedRows, sheet.maxRow, headRows);
+        let visCols = hideByGroups(colGroups, collapsedCols, sheet.maxCol, 0);
+        const ganttAll = visCols.filter((c) => c >= freezeCol);
+        if (ganttAll.length > 48) {
+          visCols = [...visCols.filter((c) => c < freezeCol), ...ganttAll.slice(-48)];
+        }
+        const dayRow = Math.max(headRows - 1, 0);
+        const holidays = new Set();
+        for (let c = freezeCol; c < sheet.maxCol; c++) {
+          const v = sheet.rows[dayRow]?.[c]?.v;
+          if (typeof v === "string" && /^\s+\d+/.test(v)) holidays.add(c);
+        }
+        const colPos = new Map(visCols.map((c, i) => [c, i]));
+        const boxes = [];
+        for (const raw of sheet.merges || []) {
+          const [a, b] = String(raw).split(":");
+          const s = parseA1(a);
+          const e = parseA1(b || a);
+          if (!s || !e) continue;
+          boxes.push({ r1: s.r, c1: s.c, r2: Math.min(e.r, sheet.maxRow - 1), c2: Math.min(e.c, sheet.maxCol - 1) });
+        }
+        const skip = new Set();
+        const span = new Map();
+        for (const box of boxes) {
+          const rows = visRows.filter((r) => r >= box.r1 && r <= box.r2);
+          const cols = visCols.filter((c) => c >= box.c1 && c <= box.c2);
+          if (!rows.length || !cols.length) continue;
+          span.set(`${rows[0]}:${cols[0]}`, { rs: rows.length, cs: cols.length, srcR: box.r1, srcC: box.c1 });
+          for (const r of rows) for (const c of cols) {
+            if (r !== rows[0] || c !== cols[0]) skip.add(`${r}:${c}`);
+          }
+        }
+        const HEAD = 26, ROW = 22, GUTTER = 8;
+        const leftW = (i) => [78, 100, 168, 44, 34][i] || 48;
+        const ganttVisible = visCols.filter((c) => c >= freezeCol).length;
+        const leftCss = Array.from({ length: freezeCol }, (_, i) => `${leftW(i)}px`).join(" ");
+        const colsCss = `${GUTTER}px ${leftCss} repeat(${Math.max(ganttVisible, 1)}, minmax(14px, 1fr))`;
+        const rowsCss = `repeat(${headRows}, ${HEAD}px) repeat(${Math.max(visRows.length - headRows, 0)}, ${ROW}px)`;
+        const parts = [`<div class="wbs-fit"><div class="grid" style="grid-template-columns:${colsCss};grid-template-rows:${rowsCss};width:100%">`];
+        visRows.forEach((r, vr) => {
+          parts.push(`<div class="cell" style="grid-column:1;grid-row:${vr + 1};background:#f7f8f9"></div>`);
+          visCols.forEach((c) => {
+            if (skip.has(`${r}:${c}`)) return;
+            const sp = span.get(`${r}:${c}`) || { rs: 1, cs: 1, srcR: r, srcC: c };
+            const cell = sheet.rows[sp.srcR]?.[sp.srcC] || sheet.rows[r]?.[c] || {};
+            const isHead = r < headRows;
+            const gantt = !isHead && freezeCol < sheet.maxCol && c >= freezeCol;
+            // 휴일 회색은 일자 행·본문만 (월/주차 헤더는 제외)
+            const holiday = holidays.has(c) && (r === dayRow || r >= headRows);
+            const fill = cell.fill;
+            const status = gantt ? String(sheet.rows[sp.srcR]?.[Math.max(freezeCol - 1, 0)]?.v ?? "").trim() : "";
+            const marker = String(cell.v ?? "").trim();
+            let mark = null;
+            if (gantt && marker === "*") mark = { cls: "bar-plan", bg: "#fce5cd" };
+            else if (gantt && (marker === "-" || marker === "–")) {
+              if (status.includes("»")) mark = { cls: "bar-ing", bg: "#fff2cc" };
+              else if (status.includes("❙") || status.includes("❚") || status.includes("✕") || status.includes("×")) mark = { cls: "bar-wait", bg: "#f4cccc" };
+              else mark = { cls: "bar-done", bg: "#d9ead3" };
+            }
+            let bg = fill;
+            let color = cell.color;
+            if (isHead && !bg) bg = c < freezeCol ? "#3d85c6" : "#f3f5f7";
+            if (isHead && fill && String(fill).toUpperCase() === "#666666") color = "#fff";
+            if (isHead && !color) color = c < freezeCol || (bg && String(bg).toUpperCase() === "#3D85C6") ? "#fff" : "#5b6166";
+            if (gantt && mark) bg = mark.bg;
+            else if (gantt && (!fill || String(fill).toUpperCase() === "#FFFFFF")) bg = holiday ? "#efefef" : "#fff";
+            if (holiday && !mark) bg = "#efefef";
+            if (holiday && r === dayRow) color = cell.color || "#c62828";
+            const gc = colPos.get(c) + 2;
+            const stl = [
+              `grid-column:${gc} / span ${sp.cs}`,
+              `grid-row:${vr + 1} / span ${sp.rs}`,
+              bg ? `background:${bg}` : "",
+              color && !gantt ? `color:${color}` : "",
+              cell.b ? "font-weight:700" : "",
+              cell.h === "center" || isHead || gantt ? "justify-content:center;text-align:center" : "",
+            ].filter(Boolean).join(";");
+            let text = (gantt && mark) || cell.v == null ? "" : esc(cell.v);
+            if (isHead && c >= freezeCol && cell.v != null) text = esc(String(cell.v).trim());
+            const cls = ["cell", isHead ? "head" : "", mark ? mark.cls : "", holiday ? "holiday" : ""].filter(Boolean).join(" ");
+            parts.push(`<div class="${cls}" style="${stl}">${text}</div>`);
+          });
+        });
+        parts.push("</div></div>");
+        const title = sheet.name === "WBS" ? "WBS 전체" : sheet.name;
+        return `<h1>${esc(title)}</h1><p class="pdf-sub">엑셀 기본 접힘 반영 · 최근 일정</p>${parts.join("")}`;
+      }
+      function fitWbs() {
+        // 가로 100% 그리드라 별도 scale 불필요. 인쇄 전 레이아웃만 확정.
+        document.querySelectorAll("#pdf-wbs .wbs-fit .grid").forEach((grid) => {
+          grid.style.transform = "none";
+          grid.style.width = "100%";
+        });
+        document.querySelectorAll("#pdf-wbs .wbs-fit").forEach((box) => {
+          box.style.width = "100%";
+          box.style.height = "auto";
+        });
+      }
+
+      function chartBuckets(days, grainWeek) {
+        if (!grainWeek) return days.map((d) => ({ key: d, label: md(d), dates: [d] }));
+        const map = new Map();
+        for (const d of days) {
+          const key = weekStart(d);
+          if (!map.has(key)) map.set(key, { key, label: md(key), dates: [] });
+          map.get(key).dates.push(d);
+        }
+        return [...map.values()];
+      }
+      function stat(label, value, sub, meta) {
+        return `<td class="stat">
+          <div class="stat-label">${label}</div>
+          <div class="stat-value">${value}</div>
+          ${sub ? `<div class="stat-sub ${sub.cls || ""}">${sub.text}</div>` : ""}
+          ${meta ? `<div class="stat-meta">${meta}</div>` : ""}
+        </td>`;
+      }
+      function legend(items) {
+        return `<div class="legend">${items.map((it) =>
+          it.line
+            ? `<span style="color:${it.color}"><i class="ln" style="border-color:${it.color}"></i>${it.label}</span>`
+            : `<span><i style="background:${it.color}"></i>${it.label}</span>`
+        ).join("")}</div>`;
+      }
+
+      function restoreEdits() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(editKey()) || "null");
+          const src = saved || weekSnap?.sections || defaultSections;
+          for (const id of SECTION_IDS) {
+            if (src[id]) document.getElementById(id).innerHTML = src[id];
+          }
+        } catch {}
+      }
+      function saveEdits() {
+        const data = {};
+        for (const id of SECTION_IDS) data[id] = document.getElementById(id).innerHTML;
+        localStorage.setItem(editKey(), JSON.stringify(data));
+      }
+      function applyLiveOrSnap() {
+        blog = weekSnap?.report || liveBlog;
+        ads = weekSnap?.ads || liveAds;
+        svc = weekSnap?.service || liveSvc;
+        if (weekSnap?.wbs) wbsData = weekSnap.wbs;
+      }
+      function bindWeekNav() {
+        const savedMark = weekList.includes(weekId) ? " · 저장됨" : "";
+        document.getElementById("periods").innerHTML = `
+          <button class="act" id="weekPrev" type="button">◀</button>
+          <input type="date" id="weekDate" value="${weekId}" />
+          <button class="act" id="weekNext" type="button">▶</button>
+          <span class="wed">${weekId} (수)${savedMark}</span>
+          ${window.TASSI.isPages ? "" : `<button class="act primary" id="weekSave" type="button">이 주 저장</button>`}
+        `;
+        document.getElementById("weekPrev").onclick = () => void selectWeek(addDays(weekId, -7));
+        document.getElementById("weekNext").onclick = () => void selectWeek(addDays(weekId, 7));
+        document.getElementById("weekDate").onchange = (ev) => void selectWeek(lastWednesday(ev.target.value));
+        const saveBtn = document.getElementById("weekSave");
+        if (saveBtn) {
+          saveBtn.onclick = async () => {
+            saveEdits();
+            const sections = {};
+            for (const id of SECTION_IDS) sections[id] = document.getElementById(id).innerHTML;
+            const res = await fetch(window.TASSI.week(weekId), {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ sections }),
+            });
+            if (!res.ok) {
+              toast("저장에 실패했습니다.");
+              return;
+            }
+            if (!weekList.includes(weekId)) weekList.push(weekId);
+            weekList.sort();
+            weekSnap = await fetch(window.TASSI.week(weekId)).then((r) => r.json());
+            toast(`${weekId} (수) 주간보고를 저장했습니다.`);
+            render();
+          };
+        }
+      }
+
+      function render() {
+        bindWeekNav();
+
+        const { from, to } = weekRange(weekId);
+        const prev = prevRange(from, to);
+        const days = eachDay(from, to);
+        const b = blogViews(from, to);
+        const bPrev = blogViews(prev.from, prev.to);
+        const a = adsDays(from, to);
+        const aPrev = adsDays(prev.from, prev.to);
+        const s = serviceIn(from, to);
+        const sPrev = serviceIn(prev.from, prev.to);
+        const camps = campaignsIn(from, to);
+        const kws = keywordsIn(from, to);
+        const grainWeek = days.length > 14;
+        const buckets = chartBuckets(days, grainWeek);
+        const adsByDate = new Map(a.daily.map((row) => [row.date, row]));
+
+        const adsRows = buckets.map((bucket) => {
+          const stack = { NAVER: 0, GOOGLE: 0 };
+          const line = { NAVER: 0, GOOGLE: 0 };
+          for (const d of bucket.dates) {
+            const row = adsByDate.get(d);
+            if (!row) continue;
+            stack.NAVER += row.naver.impressions;
+            stack.GOOGLE += row.google.impressions;
+            line.NAVER += row.naver.clicks;
+            line.GOOGLE += row.google.clicks;
+          }
+          return { label: bucket.label, stack, line };
+        });
+        const blogRows = buckets.map((bucket) => {
+          const stack = { TISTORY: 0, VELOG: 0, BRUNCH: 0 };
+          for (const d of bucket.dates) {
+            const row = b.daily.get(d);
+            if (!row) continue;
+            stack.TISTORY += row.TISTORY;
+            stack.VELOG += row.VELOG;
+            stack.BRUNCH += row.BRUNCH;
+          }
+          return { label: bucket.label, stack };
+        });
+        const svcRows = buckets.map((bucket) => {
+          const stack = { visit: 0, start: 0, result: 0 };
+          for (const d of bucket.dates) {
+            const row = s.daily.get(d);
+            if (!row) continue;
+            stack.visit += row.visit;
+            stack.start += row.start;
+            stack.result += row.result;
+          }
+          return { label: bucket.label, stack };
+        });
+
+        const topCamp = bestCampaign(camps);
+        const kwRows = ["NAVER", "GOOGLE"].flatMap((plat) => topKeywordsByPlat(kws, plat, 2));
+        const adsLead = topCamp
+          ? `${platAds[topCamp.platform]} ‘${topCamp.name}’ : 노출 ${fmt(topCamp.impressions)} / 클릭 ${fmt(topCamp.clicks)} / CTR ${fmt1(topCamp.ctr)}%`
+          : "";
+        const kwTable = kwRows.length ? `
+          <table class="hit">
+            <thead><tr><th>매체</th><th>키워드</th><th class="num">노출</th><th class="num">클릭</th></tr></thead>
+            <tbody>${kwRows.map((kw) => `<tr>
+              <td class="plat"><span class="tag ${kw.platform}">${platAds[kw.platform]}</span></td>
+              <td class="title">${kw.name}</td>
+              <td class="num">${fmt(kw.impressions)}</td>
+              <td class="num">${fmt(kw.clicks)}</td>
+            </tr>`).join("")}</tbody>
+          </table>` : `<p class="notes">이 기간 광고 성과가 없습니다. 상세는 PDF를 확인해 주세요.</p>`;
+
+        const overallTop = lifetimeTopPosts(2);
+        const recentTop = b.topPosts.filter((p) => (p.views || 0) > 0).slice(0, 2);
+        const blogRowsHit = [
+          ...overallTop.map((p) => ({ kind: "전체", ...p })),
+          ...recentTop.map((p) => ({ kind: "최신", ...p })),
+        ];
+        const postTable = blogRowsHit.length ? `
+          <table class="hit">
+            <thead><tr><th>구분</th><th>채널</th><th>글</th><th class="num">조회</th></tr></thead>
+            <tbody>${blogRowsHit.map((p) => `<tr>
+              <td class="plat">${p.kind}</td>
+              <td class="plat"><span class="tag ${p.platform}">${platBlog[p.platform]}</span></td>
+              <td class="title">${p.title || "제목 없음"}</td>
+              <td class="num">${fmt(p.views)}</td>
+            </tr>`).join("")}</tbody>
+          </table>` : `<p class="notes">${b.total ? "두드러진 콘텐츠 변동은 없습니다. 상세는 PDF를 확인해 주세요." : "이 기간 블로그 조회 데이터가 없습니다."}</p>`;
+
+        document.getElementById("mailPeriod").textContent = periodTitle(from, to);
+        document.getElementById("mailFoot").textContent = `본 보고서는 ${kstToday()} 기준으로 작성되었습니다.`;
+        document.getElementById("sec-perf").innerHTML = `
+          <div class="sub-title">3-1. 네이버 · 구글 검색광고 성과 (${md(from)} ~ ${md(to)})</div>
+          <table class="perf"><tr>
+            <td class="chart-box">
+              <div class="chart-cap">일별 노출 추이 · 클릭(선)</div>
+              ${svgChart({ rows: adsRows, keys: ["NAVER", "GOOGLE"], colors: adsColor, lines: ["NAVER", "GOOGLE"], lineColors: clickColor })}
+              ${legend([
+                { color: adsColor.NAVER, label: "네이버 노출" },
+                { color: adsColor.GOOGLE, label: "구글 노출" },
+                { color: clickColor.NAVER, label: "네이버 클릭", line: true },
+                { color: clickColor.GOOGLE, label: "구글 클릭", line: true },
+              ])}
+            </td>
+            <td class="gutter"></td>
+            <td class="stats">
+              <table class="stat-grid">
+                <tr>
+                  ${stat("기간 노출", fmt(a.impressions), delta(a.impressions, aPrev.impressions), `네이버 ${fmt(a.byPlat.NAVER.impressions)} · 구글 ${fmt(a.byPlat.GOOGLE.impressions)}`)}
+                  ${stat("기간 클릭", fmt(a.clicks), delta(a.clicks, aPrev.clicks), `CTR ${fmt1(a.ctr)}% · 네이버 ${fmt(a.byPlat.NAVER.clicks)} · 구글 ${fmt(a.byPlat.GOOGLE.clicks)}`)}
+                </tr>
+              </table>
+              ${adsLead ? `<ul class="notes"><li>• ${adsLead}</li></ul>` : ""}
+              ${kwTable}
+            </td>
+          </tr></table>
+
+          <div class="sub-title">3-2. 블로그 콘텐츠 조회수 (${md(from)} ~ ${md(to)})</div>
+          <table class="perf"><tr>
+            <td class="chart-box">
+              <div class="chart-cap">${grainWeek ? "주간" : "일별"} 조회수 추이</div>
+              ${svgChart({ rows: blogRows, keys: ["TISTORY", "VELOG", "BRUNCH"], colors: blogColor })}
+              ${legend([
+                { color: blogColor.TISTORY, label: "티스토리" },
+                { color: blogColor.VELOG, label: "벨로그" },
+                { color: blogColor.BRUNCH, label: "브런치" },
+              ])}
+            </td>
+            <td class="gutter"></td>
+            <td class="stats">
+              <table class="stat-grid">
+                <tr>
+                  ${stat("기간 조회", fmt(b.total), delta(b.total, bPrev.total), `티스토리 ${fmt(b.byPlat.TISTORY)} · 벨로그 ${fmt(b.byPlat.VELOG)} · 브런치 ${fmt(b.byPlat.BRUNCH)}`)}
+                  ${stat("이전 기간", fmt(bPrev.total), { cls: "flat", text: `${md(prev.from)} ~ ${md(prev.to)}` }, "")}
+                </tr>
+              </table>
+              ${postTable}
+            </td>
+          </tr></table>
+
+          <div class="sub-title">3-3. 서비스 이용자 현황 (${md(from)} ~ ${md(to)})</div>
+          <table class="perf"><tr>
+            <td class="chart-box">
+              <div class="chart-cap">${grainWeek ? "주간" : "일별"} 인트로 · 시작 · 결과</div>
+              ${svgChart({ rows: svcRows, keys: ["visit", "start", "result"], colors: svcColor })}
+              ${legend([
+                { color: svcColor.visit, label: "인트로" },
+                { color: svcColor.start, label: "시작하기" },
+                { color: svcColor.result, label: "결과" },
+              ])}
+            </td>
+            <td class="gutter"></td>
+            <td class="stats">
+              <table class="stat-grid">
+                <tr>
+                  ${stat("방문자", fmt(s.visitors), delta(s.visitors, sPrev.visitors), `이벤트 ${fmt(s.events)} · 플레이 ${fmt(s.plays)}`)}
+                  ${stat("결과 화면", fmt(s.results), delta(s.results, sPrev.results), `인트로 ${fmt(s.funnel.visit || 0)} · 시작 ${fmt(s.funnel.start || 0)}`)}
+                </tr>
+              </table>
+              ${s.resultRows.length ? `
+              <table class="hit">
+                <thead><tr><th>결과</th><th class="num">건수</th></tr></thead>
+                <tbody>${s.resultRows.map(([name, n]) => `<tr><td class="title">${name}</td><td class="num">${fmt(n)}</td></tr>`).join("")}</tbody>
+              </table>` : `<p class="notes">이 기간 서비스 이용 로그가 없습니다. 상세는 <a href="service.html">서비스</a>에서 확인하세요.</p>`}
+            </td>
+          </tr></table>
+        `;
+
+        const pdfR = detailRange();
+        const bPdf = blogViews(pdfR.from, pdfR.to);
+        const aPdf = adsDays(pdfR.from, pdfR.to);
+        const prevPdf = prevRange(pdfR.from, pdfR.to);
+        const bPdfPrev = blogViews(prevPdf.from, prevPdf.to);
+        const aPdfPrev = adsDays(prevPdf.from, prevPdf.to);
+        const daysPdf = eachDay(pdfR.from, pdfR.to);
+        const adsByDatePdf = new Map(aPdf.daily.map((row) => [row.date, row]));
+        const pdfBlogRows = daysPdf.map((d) => ({
+          label: md(d),
+          stack: bPdf.daily.get(d) || { TISTORY: 0, VELOG: 0, BRUNCH: 0 },
+        }));
+        const pdfAdsRows = daysPdf.map((d) => {
+          const row = adsByDatePdf.get(d);
+          return {
+            label: md(d),
+            stack: { NAVER: row?.naver.impressions || 0, GOOGLE: row?.google.impressions || 0 },
+            line: { NAVER: row?.naver.clicks || 0, GOOGLE: row?.google.clicks || 0 },
+          };
+        });
+        const campsPdf = campaignsIn(pdfR.from, pdfR.to);
+        const kwsPdf = keywordsIn(pdfR.from, pdfR.to);
+        const dImp = delta(aPdf.impressions, aPdfPrev.impressions);
+        const dClk = delta(aPdf.clicks, aPdfPrev.clicks);
+        const dCost = delta(aPdf.cost, aPdfPrev.cost);
+        const dView = delta(bPdf.total, bPdfPrev.total);
+        const notablePosts = bPdf.topPosts.filter((p) => (p.views || 0) >= 3).slice(0, 12);
+        const pdfChart = { width: 1040, height: 200 };
+        const pdfSub = `${md(pdfR.from)} ~ ${md(pdfR.to)} · 최근 20일`;
+
+        document.getElementById("pdf-blog").innerHTML = `
+          <h1>블로그 상세</h1>
+          <p class="pdf-sub">${pdfSub}</p>
+          <table class="pdf-kpis"><tr>
+            <td><div class="k">기간 조회</div><div class="v">${fmt(bPdf.total)}</div><div class="s ${dView.cls}">${dView.text}</div></td>
+            <td><div class="k">이전 기간</div><div class="v">${fmt(bPdfPrev.total)}</div><div class="s">${md(prevPdf.from)} ~ ${md(prevPdf.to)}</div></td>
+            <td><div class="k">누적 합계</div><div class="v">${fmt(bPdf.lifetime)}</div><div class="s">채널 총조회</div></td>
+            <td><div class="k">티스토리 · 벨로그 · 브런치</div><div class="v">${fmt(bPdf.byPlat.TISTORY)} · ${fmt(bPdf.byPlat.VELOG)} · ${fmt(bPdf.byPlat.BRUNCH)}</div></td>
+          </tr></table>
+          <div class="chart-cap">일별 조회수 추이</div>
+          ${svgChart({ rows: pdfBlogRows, keys: ["TISTORY", "VELOG", "BRUNCH"], colors: blogColor, ...pdfChart })}
+          ${legend([
+            { color: blogColor.TISTORY, label: "티스토리" },
+            { color: blogColor.VELOG, label: "벨로그" },
+            { color: blogColor.BRUNCH, label: "브런치" },
+          ])}
+          <table class="pdf-grid"><tr>
+            <td>
+              <h2>상위 글</h2>
+              <table class="data">
+                <thead><tr><th>글</th><th class="num">조회</th></tr></thead>
+                <tbody>${(notablePosts.length ? notablePosts : bPdf.topPosts.slice(0, 8)).map((p) =>
+                  `<tr><td><span class="tag ${p.platform}">${platBlog[p.platform]}</span>${p.title || "-"}</td><td class="num">${fmt(p.views)}</td></tr>`
+                ).join("") || `<tr><td colspan="2">글 통계가 없습니다.</td></tr>`}</tbody>
+              </table>
+            </td>
+            <td>
+              <h2>유입</h2>
+              <table class="data">
+                <thead><tr><th>경로</th><th class="num">조회</th></tr></thead>
+                <tbody>${bPdf.sources.slice(0, 8).map((s) => `<tr><td>${s.name}</td><td class="num">${fmt(s.views)}</td></tr>`).join("") || `<tr><td colspan="2">유입 데이터가 없습니다.</td></tr>`}</tbody>
+              </table>
+              <h2>유입 키워드</h2>
+              <table class="data">
+                <thead><tr><th>키워드</th><th class="num">조회</th></tr></thead>
+                <tbody>${bPdf.topKw.slice(0, 8).map((k) => `<tr><td>${k.name}</td><td class="num">${fmt(k.views)}</td></tr>`).join("") || `<tr><td colspan="2">키워드가 없습니다.</td></tr>`}</tbody>
+              </table>
+            </td>
+          </tr></table>
+        `;
+
+        document.getElementById("pdf-blog-days").innerHTML = `
+          <h1>블로그 일별 조회</h1>
+          <p class="pdf-sub">${pdfSub}</p>
+          <table class="data">
+            <thead><tr><th>날짜</th><th class="num">티스토리</th><th class="num">벨로그</th><th class="num">브런치</th><th class="num">합계</th></tr></thead>
+            <tbody>${daysPdf.map((d) => {
+              const row = bPdf.daily.get(d) || { TISTORY: 0, VELOG: 0, BRUNCH: 0 };
+              return `<tr><td>${md(d)} (${yoil(d)})</td><td class="num">${fmt(row.TISTORY)}</td><td class="num">${fmt(row.VELOG)}</td><td class="num">${fmt(row.BRUNCH)}</td><td class="num">${fmt(row.TISTORY + row.VELOG + row.BRUNCH)}</td></tr>`;
+            }).join("")}</tbody>
+          </table>
+        `;
+
+        document.getElementById("pdf-ads").innerHTML = `
+          <h1>키워드 상세</h1>
+          <p class="pdf-sub">${pdfSub}</p>
+          <table class="pdf-kpis"><tr>
+            <td><div class="k">기간 노출</div><div class="v">${fmt(aPdf.impressions)}</div><div class="s ${dImp.cls}">${dImp.text}</div></td>
+            <td><div class="k">기간 클릭</div><div class="v">${fmt(aPdf.clicks)}</div><div class="s ${dClk.cls}">${dClk.text} · CTR ${fmt1(aPdf.ctr)}%</div></td>
+            <td><div class="k">기간 비용</div><div class="v">${won(aPdf.cost)}</div><div class="s ${dCost.cls}">${dCost.text}</div></td>
+            <td><div class="k">평균 CPC</div><div class="v">${won(aPdf.cpc)}</div><div class="s">네이버 ${won(aPdf.byPlat.NAVER.cost)} · 구글 ${won(aPdf.byPlat.GOOGLE.cost)}</div></td>
+          </tr></table>
+          <div class="chart-cap">일별 노출 추이 · 클릭(선)</div>
+          ${svgChart({ rows: pdfAdsRows, keys: ["NAVER", "GOOGLE"], colors: adsColor, lines: ["NAVER", "GOOGLE"], lineColors: clickColor, ...pdfChart })}
+          ${legend([
+            { color: adsColor.NAVER, label: "네이버 노출" },
+            { color: adsColor.GOOGLE, label: "구글 노출" },
+            { color: clickColor.NAVER, label: "네이버 클릭", line: true },
+            { color: clickColor.GOOGLE, label: "구글 클릭", line: true },
+          ])}
+          <table class="pdf-grid"><tr>
+            <td>
+              <h2>캠페인</h2>
+              <table class="data">
+                <thead><tr><th>캠페인</th><th class="num">노출</th><th class="num">클릭</th><th class="num">CTR</th><th class="num">비용</th></tr></thead>
+                <tbody>${campsPdf.slice(0, 10).map((c) =>
+                  `<tr><td><span class="tag ${c.platform}">${platAds[c.platform]}</span>${c.name}</td><td class="num">${fmt(c.impressions)}</td><td class="num">${fmt(c.clicks)}</td><td class="num">${fmt1(c.ctr)}%</td><td class="num">${won(c.cost)}</td></tr>`
+                ).join("") || `<tr><td colspan="5">캠페인이 없습니다.</td></tr>`}</tbody>
+              </table>
+            </td>
+            <td>
+              <h2>상위 키워드</h2>
+              <table class="data">
+                <thead><tr><th>키워드</th><th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th></tr></thead>
+                <tbody>${kwsPdf.slice(0, 10).map((k) =>
+                  `<tr><td><span class="tag ${k.platform}">${platAds[k.platform]}</span>${k.name}</td><td class="num">${fmt(k.impressions)}</td><td class="num">${fmt(k.clicks)}</td><td class="num">${won(k.cost)}</td></tr>`
+                ).join("") || `<tr><td colspan="4">키워드가 없습니다.</td></tr>`}</tbody>
+              </table>
+            </td>
+          </tr></table>
+        `;
+
+        document.getElementById("pdf-ads-days").innerHTML = `
+          <h1>키워드 일별 성과</h1>
+          <p class="pdf-sub">${pdfSub}</p>
+          <table class="data">
+            <thead><tr><th>날짜</th><th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th></tr></thead>
+            <tbody>${daysPdf.map((d) => {
+              const ad = adsByDatePdf.get(d) || { impressions: 0, clicks: 0, cost: 0 };
+              return `<tr><td>${md(d)} (${yoil(d)})</td><td class="num">${fmt(ad.impressions)}</td><td class="num">${fmt(ad.clicks)}</td><td class="num">${won(ad.cost)}</td></tr>`;
+            }).join("")}</tbody>
+          </table>
+        `;
+        renderWbsPdf();
+      }
+
+      function toast(msg) {
+        const el = document.getElementById("toast");
+        el.textContent = msg;
+        el.classList.add("on");
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => el.classList.remove("on"), 1800);
+      }
+      function mailHtml() {
+        const clone = document.getElementById("mail").cloneNode(true);
+        clone.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
+        const map = {
+          mail: "background:#ffffff;border:1px solid #e2e5e9;border-radius:8px;overflow:hidden;font-size:13px;line-height:1.6;color:#333a45;font-family:'Malgun Gothic','Apple SD Gothic Neo',Arial,sans-serif",
+          "mail-head": "background-color:#2d5be3;padding:28px 36px;color:#ffffff",
+          ttl: "font-size:20px;font-weight:bold;line-height:26px;color:#ffffff",
+          sub: "color:#dbe4ff;font-size:13px;padding-top:6px",
+          sec: "padding:28px 36px 8px 36px",
+          tight: "padding-top:18px",
+          last: "padding-bottom:24px",
+          "sec-title": "font-size:16px;font-weight:bold;color:#1b1f27;border-left:4px solid #2d5be3;padding-left:10px;line-height:22px",
+          "sub-title": "font-size:13px;font-weight:bold;color:#4a5261;margin:14px 0 8px",
+          sheet: "width:100%;border-collapse:collapse;font-size:13px;margin-top:12px",
+          note: "font-size:12.5px;margin-top:8px",
+          sum: "font-weight:bold;background-color:#f8f9fb",
+          lead: "padding:5px 0 2px",
+          ok: "color:#2ea043;font-weight:bold;text-align:center",
+          ing: "color:#e0972d;font-weight:bold;text-align:center",
+          ctr: "text-align:center",
+          grp: "font-weight:bold",
+          num: "text-align:right;white-space:nowrap",
+          topic: "font-weight:bold;color:#2d5be3;padding:10px 0 2px",
+          body: "padding:2px 0 4px 14px;line-height:1.6",
+          bullets: "margin:2px 0 10px;padding:0;list-style:none",
+          sub: "margin:2px 0 4px;padding:0;list-style:none",
+          nest: "margin:2px 0 0;padding:0;list-style:none",
+          list: "margin:8px 0 0;padding:0;list-style:none",
+          "chart-box": "width:48%;background-color:#fafbfc;border:1px solid #e2e5e9;border-radius:6px;padding:12px;vertical-align:top",
+          "chart-cap": "font-size:11px;color:#9aa1ac;padding-bottom:6px",
+          legend: "padding-top:8px;font-size:11px;color:#7a8291",
+          gutter: "width:4%",
+          stats: "width:48%;vertical-align:top;padding-top:2px",
+          "stat-grid": "width:100%;border-collapse:separate;border-spacing:8px",
+          stat: "width:50%;background-color:#f8f9fb;border:1px solid #e2e5e9;border-radius:6px;padding:14px;vertical-align:top",
+          "stat-label": "font-size:11px;color:#7a8291",
+          "stat-value": "font-size:20px;font-weight:bold;color:#1b1f27;padding-top:5px",
+          "stat-sub": "font-size:12px;color:#7a8291;padding-top:5px",
+          "stat-meta": "font-size:11px;color:#9aa1ac;padding-top:4px",
+          up: "color:#2ea043",
+          down: "color:#d1242f",
+          flat: "color:#9aa1ac",
+          notes: "margin:8px 0 6px;padding:0;list-style:none;font-size:12.5px;color:#333a45",
+          hit: "width:100%;border-collapse:collapse;margin-top:8px",
+          plat: "white-space:nowrap;color:#4a5261",
+          title: "word-break:break-word",
+          "mail-foot": "background-color:#f5f6f8;padding:16px 36px;border-top:1px solid #e2e5e9;font-size:11px;color:#9aa1ac",
+        };
+        clone.querySelectorAll("*").forEach((el) => {
+          const css = [...el.classList].map((n) => map[n]).filter(Boolean).join(";");
+          if (css) el.style.cssText = css + (el.getAttribute("style") ? ";" + el.getAttribute("style") : "");
+        });
+        clone.querySelectorAll(".sheet th, .sheet td").forEach((el) => {
+          el.style.padding = "9px 10px";
+          el.style.border = "1px solid #e2e5e9";
+          el.style.verticalAlign = "middle";
+          el.style.textAlign = "center";
+        });
+        clone.querySelectorAll(".sheet.note th, .sheet.note td").forEach((el) => {
+          el.style.textAlign = "left";
+        });
+        clone.querySelectorAll(".sheet.note .num, .sheet.note th.num").forEach((el) => {
+          el.style.textAlign = "right";
+          el.style.whiteSpace = "nowrap";
+        });
+        clone.querySelectorAll(".sheet.note .sum td").forEach((el) => {
+          el.style.fontWeight = "700";
+          el.style.backgroundColor = "#f8f9fb";
+        });
+        clone.querySelectorAll(".sheet th").forEach((el) => {
+          el.style.backgroundColor = "#f5f6f8";
+          el.style.color = "#4a5261";
+          el.style.fontWeight = "400";
+        });
+        clone.querySelectorAll(".sheet .grp").forEach((el) => {
+          el.style.fontWeight = "700";
+        });
+        clone.querySelectorAll("#sec-note > div").forEach((el) => {
+          el.style.padding = "5px 0";
+        });
+        clone.querySelectorAll("#sec-note .lead").forEach((el) => {
+          el.style.padding = "5px 0 2px";
+        });
+        clone.querySelectorAll(".narrative .bullets > li, .list > li").forEach((el) => {
+          el.style.padding = el.style.padding || "3px 0 3px 0";
+        });
+        clone.querySelectorAll(".narrative .bullets .sub > li, .list .nest > li").forEach((el) => {
+          el.style.padding = "2px 0 2px 18px";
+        });
+        clone.querySelectorAll(".hit th, .hit td").forEach((el) => {
+          el.style.padding = "5px 6px 5px 0";
+          el.style.borderBottom = "1px solid #e2e5e9";
+          el.style.fontSize = "12px";
+          el.style.lineHeight = "16px";
+        });
+        clone.querySelectorAll(".hit th").forEach((el) => { el.style.color = "#7a8291"; el.style.fontWeight = "400"; });
+        clone.querySelectorAll(".hit .num").forEach((el) => { el.style.textAlign = "right"; el.style.whiteSpace = "nowrap"; });
+        clone.querySelectorAll("a").forEach((el) => { el.style.color = "#2d5be3"; el.style.textDecoration = "none"; });
+        clone.id = "";
+        clone.className = "";
+        clone.style.cssText = map.mail;
+        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f2f3f5;padding:24px 0;font-family:'Malgun Gothic','Apple SD Gothic Neo',Arial,sans-serif"><tr><td align="center" style="width:900px">${clone.outerHTML}</td></tr></table>`;
+      }
+
+      document.getElementById("copyBtn").onclick = async () => {
+        saveEdits();
+        const text = document.getElementById("mail").innerText;
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              "text/html": new Blob([mailHtml()], { type: "text/html" }),
+              "text/plain": new Blob([text], { type: "text/plain" }),
+            }),
+          ]);
+          toast("메일 본문을 복사했습니다.");
+        } catch {
+          try {
+            await navigator.clipboard.writeText(text);
+            toast("텍스트로 복사했습니다.");
+          } catch {
+            toast("복사에 실패했습니다. 본문을 직접 선택해 주세요.");
+          }
+        }
+      };
+      document.getElementById("pdfBtn").onclick = async () => {
+        saveEdits();
+        if (!wbsData) {
+          try { wbsData = await fetch(window.TASSI.api("wbs")).then((r) => r.json()); }
+          catch { wbsData = { sheets: [] }; }
+          render();
+        }
+        const { from, to } = weekRange(weekId);
+        const prev = document.title;
+        document.title = `주간보고_${from}_${to}`;
+        const pdf = document.querySelector(".pdf-only");
+        pdf.classList.add("measure");
+        requestAnimationFrame(() => {
+          fitWbs();
+          window.print();
+          pdf.classList.remove("measure");
+          document.title = prev;
+        });
+      };
+      ["sec-progress", "sec-detail", "sec-next", "sec-note"].forEach((id) => {
+        document.getElementById(id).addEventListener("blur", saveEdits, true);
+      });
+
+      async function selectWeek(id) {
+        weekId = lastWednesday(id);
+        const next = new URL(location.href);
+        next.searchParams.set("week", weekId);
+        history.replaceState({}, "", next);
+        weekSnap = await fetch(window.TASSI.week(weekId)).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        applyLiveOrSnap();
+        restoreEdits();
+        render();
+        if (wbsData) renderWbsPdf();
+      }
+
+      async function boot() {
+        if (!weekId) weekId = lastWednesday(kstToday());
+        const [index, snap, b, a, s, w] = await Promise.all([
+          fetch(window.TASSI.weeksIndex()).then((r) => r.json()).catch(() => ({ weeks: [] })),
+          fetch(window.TASSI.week(weekId || lastWednesday(kstToday()))).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch(window.TASSI.api("report")).then((r) => r.json()).catch(() => null),
+          fetch(window.TASSI.api("ads")).then((r) => r.json()).catch(() => null),
+          fetch(window.TASSI.api("service")).then((r) => r.json()).catch(() => null),
+          fetch(window.TASSI.api("wbs")).then((r) => r.json()).catch(() => ({ sheets: [] })),
+        ]);
+        weekList = index.weeks || [];
+        weekSnap = snap;
+        liveBlog = b;
+        liveAds = a;
+        liveSvc = s;
+        wbsData = (snap && snap.wbs) || w || { sheets: [] };
+        applyLiveOrSnap();
+        restoreEdits();
+        render();
+        renderWbsPdf();
+      }
+      boot();
+    </script>
+  </body>
+</html>

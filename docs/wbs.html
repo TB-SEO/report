@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WBS · T-ASSI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #f4f5f6;
+        color: var(--text);
+        font-family: "Pretendard Variable", sans-serif;
+      }
+      .wbs-shell {
+        height: calc(100vh - 52px);
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+      .wbs-bar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 20px;
+        background: #fff;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .wbs-bar h1 {
+        margin: 0;
+        font-size: 16px;
+        line-height: 20px;
+        font-weight: 700;
+        color: var(--fg);
+        letter-spacing: -0.3px;
+      }
+      .level-btns, .legend { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+      .level-btns button, .toggle {
+        font-family: inherit;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: 1px solid #c5c9cd;
+        border-radius: 3px;
+        background: #fff;
+        color: var(--fg);
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 20px;
+      }
+      .level-btns button:hover, .toggle:hover { border-color: var(--action); color: var(--action); }
+      .legend { margin-left: auto; gap: 14px; }
+      .legend i {
+        display: inline-block;
+        width: 14px;
+        height: 10px;
+        border-radius: 2px;
+        margin-right: 6px;
+        vertical-align: -1px;
+        font-style: normal;
+      }
+      .legend .done { background: #d9ead3; border: 1px solid #b6d7a8; }
+      .legend .ing { background: #fff2cc; border: 1px solid #f0e0a0; }
+      .legend .wait { background: #f4cccc; border: 1px solid #e8b4b4; }
+      .legend .plan { background: #fce5cd; border: 1px solid #f0c89a; }
+      .legend .holiday { background: #efefef; border: 1px solid #d0d4d8; }
+      .scroller { overflow: auto; background: #fff; position: relative; }
+      .board { position: relative; }
+      .col-outline {
+        position: sticky;
+        top: 0;
+        z-index: 12;
+        height: 18px;
+        background: #f7f8f9;
+        border-bottom: 1px solid #e4e7ea;
+      }
+      .col-outline .bracket {
+        position: absolute;
+        top: 2px;
+        height: 14px;
+        border-top: 1px solid #8a9099;
+        border-left: 1px solid #8a9099;
+        border-right: 1px solid #8a9099;
+        pointer-events: none;
+      }
+      .col-outline .toggle {
+        position: absolute;
+        top: 1px;
+        z-index: 2;
+        pointer-events: auto;
+      }
+      .grid { display: grid; position: relative; }
+      .cell {
+        border-right: 1px solid #e4e7ea;
+        border-bottom: 1px solid #e4e7ea;
+        padding: 0 6px;
+        font-size: 12px;
+        line-height: 15px;
+        letter-spacing: -0.2px;
+        color: var(--fg);
+        white-space: pre-wrap;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        background: #fff;
+      }
+      .cell.head {
+        font-weight: 700;
+        font-size: 11px;
+        justify-content: center;
+        text-align: center;
+        position: sticky;
+        z-index: 3;
+      }
+      .cell.sticky { position: sticky; z-index: 2; }
+      .cell.head.sticky { z-index: 6; }
+      .cell.gutter {
+        padding: 0;
+        background: #f7f8f9;
+        justify-content: flex-start;
+        gap: 0;
+        z-index: 7;
+      }
+      .cell.head.gutter { z-index: 8; background: #eef0f2; }
+      .cell.gantt { padding: 2px 0; justify-content: center; }
+      .cell.bar-done {
+        background: #d9ead3 !important;
+        box-shadow: inset 0 0 0 1px #b6d7a8;
+      }
+      .cell.bar-ing {
+        background: #fff2cc !important;
+        box-shadow: inset 0 0 0 1px #f0e0a0;
+      }
+      .cell.bar-wait {
+        background: #f4cccc !important;
+        box-shadow: inset 0 0 0 1px #e8b4b4;
+      }
+      .cell.bar-plan {
+        background: #fce5cd !important;
+        box-shadow: inset 0 0 0 1px #f0c89a;
+      }
+      .cell.holiday:not(.bar-done):not(.bar-ing):not(.bar-wait):not(.bar-plan) {
+        background: #efefef !important;
+      }
+      .cell.holiday.head {
+        color: #c62828 !important;
+      }
+      .cell.status { justify-content: center; }
+      .toggle {
+        width: 16px;
+        height: 16px;
+        margin-left: 2px;
+        border-radius: 2px;
+        font-size: 11px;
+        line-height: 14px;
+        flex: none;
+      }
+      .row-toggle-slot {
+        display: flex;
+        align-items: center;
+        height: 100%;
+        padding-left: 2px;
+      }
+      .tabs {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        padding: 0 16px;
+        background: #eef0f2;
+        border-top: 1px solid var(--hairline);
+        min-height: 36px;
+      }
+      .tabs button {
+        font-family: inherit;
+        height: 28px;
+        padding: 0 14px;
+        border: 1px solid #d0d4d8;
+        border-bottom: 0;
+        border-radius: 6px 6px 0 0;
+        background: #e4e7ea;
+        color: var(--fg);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tabs button.on { background: #fff; font-weight: 700; height: 32px; }
+      .changelog-wrap { padding: 16px 20px 28px; min-width: 100%; }
+      .changelog {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: auto;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .changelog th, .changelog td {
+        border: 1px solid #e2e5e9;
+        padding: 8px 10px;
+        vertical-align: middle;
+        white-space: nowrap;
+        text-align: left;
+        background: #fff;
+        color: var(--fg);
+      }
+      .changelog th {
+        background: #f5f6f8;
+        color: #4a5261;
+        font-weight: 700;
+      }
+      .changelog tr.sec td {
+        background: #eef3ff;
+        color: #2d5be3;
+        font-weight: 700;
+        font-size: 14px;
+        padding: 12px 12px;
+        border-color: #d5def5;
+      }
+      .changelog td.note, .changelog th.note {
+        white-space: normal;
+        min-width: 220px;
+      }
+      .changelog td.change, .changelog th.change {
+        white-space: normal;
+        min-width: 280px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wbs-shell">
+      <div class="wbs-bar">
+        <h1>SEO 전략 기획</h1>
+        <div class="level-btns" id="levels" title="엑셀처럼 단계별 일괄 접기/펼치기"></div>
+        <div class="legend">
+          <span><i class="done"></i>완료(○)</span>
+          <span><i class="ing"></i>진행(»)</span>
+          <span><i class="wait"></i>대기(❙ ❙)</span>
+          <span><i class="plan"></i>예정(*)</span>
+          <span><i class="holiday"></i>휴일</span>
+        </div>
+      </div>
+      <div class="scroller" id="scroller"></div>
+      <div class="tabs" id="sheets"></div>
+    </div>
+    <script src="site.js"></script>
+    <script src="nav.js"></script>
+    <script>
+      const DAY = 22;
+      const HEAD = 30;
+      const ROW = 26;
+      const GUTTER = 28;
+      const COL_OUTLINE = 18;
+      const LEFT = [88, 112, 168, 56, 36];
+      const esc = (value) => String(value).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+      const state = new Map();
+
+      function parseA1(ref) {
+        const m = String(ref).match(/^([A-Z]+)(\d+)$/i);
+        if (!m) return null;
+        let col = 0;
+        for (const ch of m[1].toUpperCase()) col = col * 26 + (ch.charCodeAt(0) - 64);
+        return { r: Number(m[2]) - 1, c: col - 1 };
+      }
+      function freezeOf(sheet) {
+        const parsed = sheet.freeze && parseA1(sheet.freeze);
+        if (parsed) return parsed;
+        return { r: 2, c: sheet.maxCol };
+      }
+      function levelsOf(sheet, kind) {
+        return (sheet.outline?.[kind] || []).map((item) => item.level || 0);
+      }
+      function rowStatus(sheet, r, freezeCol) {
+        return String(sheet.rows[r]?.[Math.max(freezeCol - 1, 0)]?.v ?? "").trim();
+      }
+      function ganttMark(cell, status) {
+        const v = String(cell?.v ?? "").trim();
+        if (v === "*") return { cls: "bar-plan", bg: "#fce5cd" };
+        if (v === "-" || v === "–") {
+          if (status.includes("»")) return { cls: "bar-ing", bg: "#fff2cc" };
+          if (status.includes("❙") || status.includes("❚")) return { cls: "bar-wait", bg: "#f4cccc" };
+          if (status === "○" || /^[Oo]$/.test(status)) return { cls: "bar-done", bg: "#d9ead3" };
+          if (status.includes("✕") || status.includes("×")) return { cls: "bar-wait", bg: "#f4cccc" };
+          return { cls: "bar-done", bg: "#d9ead3" };
+        }
+        return null;
+      }
+      function defaultCollapsed(groups, outlineItems) {
+        const set = new Set();
+        for (const g of groups) {
+          if (outlineItems?.[g.summary]?.collapsed) set.add(g.id);
+        }
+        return set;
+      }
+      function isHolidayDayValue(value) {
+        return typeof value === "string" && /^\s+\d+/.test(value);
+      }
+      function holidayColumns(sheet, headRows, freezeCol) {
+        const dayRow = Math.max(headRows - 1, 0);
+        const set = new Set();
+        for (let c = freezeCol; c < sheet.maxCol; c++) {
+          if (isHolidayDayValue(sheet.rows[dayRow]?.[c]?.v)) set.add(c);
+        }
+        return set;
+      }
+      function leftWidth(sheet, i) {
+        const w = Number(sheet.widths?.[i]);
+        if (Number.isFinite(w) && w > 0) return Math.max(36, Math.min(280, Math.round(w * 8.2)));
+        return LEFT[i] || 64;
+      }
+      function mergeBoxes(sheet) {
+        const boxes = [];
+        for (const raw of sheet.merges || []) {
+          const [a, b] = String(raw).split(":");
+          const s = parseA1(a);
+          const e = parseA1(b || a);
+          if (!s || !e) continue;
+          boxes.push({ r1: s.r, c1: s.c, r2: Math.min(e.r, sheet.maxRow - 1), c2: Math.min(e.c, sheet.maxCol - 1) });
+        }
+        return boxes;
+      }
+
+      /** Excel outline groups: contiguous detail runs at each level + adjacent summary cell. */
+      function findGroups(levels, summaryAfter) {
+        const groups = [];
+        const maxL = levels.length ? Math.max(0, ...levels) : 0;
+        for (let L = 1; L <= maxL; L++) {
+          let i = 0;
+          while (i < levels.length) {
+            if ((levels[i] || 0) < L) { i++; continue; }
+            const start = i;
+            while (i < levels.length && (levels[i] || 0) >= L) i++;
+            const end = i - 1;
+            const summary = summaryAfter ? end + 1 : start - 1;
+            if (summary < 0 || summary >= levels.length) continue;
+            if ((levels[summary] || 0) >= L) continue;
+            groups.push({ id: `${L}:${start}:${end}`, level: L, summary, start, end });
+          }
+        }
+        return groups;
+      }
+
+      function hiddenByGroups(groups, collapsedIds, length, locked) {
+        const hide = new Set();
+        for (const g of groups) {
+          if (!collapsedIds.has(g.id)) continue;
+          for (let i = g.start; i <= g.end; i++) {
+            if (i >= locked) hide.add(i);
+          }
+        }
+        const out = [];
+        for (let i = 0; i < length; i++) {
+          if (i < locked || !hide.has(i)) out.push(i);
+        }
+        return out;
+      }
+
+      function sheetState(sheet) {
+        if (!state.has(sheet.name)) {
+          const rowL = levelsOf(sheet, "rows");
+          const colL = levelsOf(sheet, "cols");
+          const freeze = freezeOf(sheet);
+          const summaryBelow = !!sheet.outline?.summaryBelow;
+          const summaryRight = !!sheet.outline?.summaryRight;
+          const rowGroups = findGroups(rowL, summaryBelow);
+          const colGroups = findGroups(colL, summaryRight);
+          const rowItems = sheet.outline?.rows || [];
+          const colItems = sheet.outline?.cols || [];
+          state.set(sheet.name, {
+            rowL, colL, freeze, rowGroups, colGroups,
+            collapsedRows: defaultCollapsed(rowGroups, rowItems),
+            collapsedCols: defaultCollapsed(colGroups, colItems),
+          });
+        }
+        return state.get(sheet.name);
+      }
+
+      function usedColCount(sheet) {
+        let max = 0;
+        for (const row of sheet.rows || []) {
+          for (let c = 0; c < (row?.length || 0); c++) {
+            if (row[c]?.v != null && String(row[c].v).trim()) max = Math.max(max, c + 1);
+          }
+        }
+        return Math.max(max, 1);
+      }
+      function rowVals(sheet, r, cols) {
+        const cells = sheet.rows[r] || [];
+        return Array.from({ length: cols }, (_, c) => (cells[c]?.v == null ? "" : String(cells[c].v)));
+      }
+      function isSectionTitle(vals) {
+        const first = String(vals[0] || "").trim();
+        if (!first || /^no\.?$/i.test(first) || /^\d+$/.test(first)) return false;
+        return vals.slice(1).every((v) => !String(v || "").trim());
+      }
+      function isJunkRow(vals) {
+        const filled = vals.map((v) => String(v || "").trim()).filter(Boolean);
+        if (!filled.length) return true;
+        if (filled.length === 1 && /^\d+$/.test(filled[0]) && !vals.slice(1).some((v) => String(v || "").trim())) {
+          // lone number with no date/type — leftover empty template rows
+          const hasDate = vals.some((v) => /\d{4}-\d{2}-\d{2}/.test(String(v)));
+          if (!hasDate && vals.filter((v) => String(v || "").trim()).length <= 1) return true;
+        }
+        return false;
+      }
+      function colClass(header, idx) {
+        const h = String(header || "");
+        if (/주요|변경사항/.test(h) || idx === 3) return "change";
+        if (/비고/.test(h) || idx === 6) return "note";
+        return "";
+      }
+      function renderTableSheet(sheet) {
+        const cols = usedColCount(sheet);
+        const headers = [];
+        let body = "";
+        for (let r = 0; r < sheet.maxRow; r++) {
+          const vals = rowVals(sheet, r, cols);
+          if (isJunkRow(vals)) continue;
+          if (isSectionTitle(vals)) {
+            body += `<tr class="sec"><td colspan="${cols}">${esc(vals[0].trim())}</td></tr>`;
+            continue;
+          }
+          const isHead = /^no\.?$/i.test(String(vals[0] || "").trim());
+          if (isHead) headers.splice(0, headers.length, ...vals);
+          const tag = isHead ? "th" : "td";
+          body += `<tr>${vals.map((v, i) => {
+            const cls = colClass(headers[i] || vals[i], i);
+            return `<${tag}${cls ? ` class="${cls}"` : ""}>${esc(v)}</${tag}>`;
+          }).join("")}</tr>`;
+        }
+        document.getElementById("scroller").innerHTML =
+          `<div class="changelog-wrap"><table class="changelog">${body || "<tr><td>데이터가 없습니다.</td></tr>"}</table></div>`;
+        document.querySelector(".wbs-bar h1").textContent = sheet.name;
+        document.getElementById("levels").innerHTML = "";
+        document.querySelector(".wbs-bar .legend").style.visibility = "hidden";
+        document.getElementById("scroller").onclick = null;
+        document.getElementById("scroller").scrollLeft = 0;
+      }
+
+      function renderSheet(sheet) {
+        if (!sheet.freeze) {
+          renderTableSheet(sheet);
+          return;
+        }
+        document.querySelector(".wbs-bar .legend").style.visibility = "visible";
+        const st = sheetState(sheet);
+        const { rowL, colL, freeze, rowGroups, colGroups, collapsedRows, collapsedCols } = st;
+        const headRows = freeze.r || 3;
+        const freezeCol = freeze.c;
+        const visRows = hiddenByGroups(rowGroups, collapsedRows, sheet.maxRow, headRows);
+        const visCols = hiddenByGroups(colGroups, collapsedCols, sheet.maxCol, 0);
+        const holidays = holidayColumns(sheet, headRows, freezeCol);
+        const colPos = new Map(visCols.map((c, i) => [c, i]));
+        const rowPos = new Map(visRows.map((r, i) => [r, i]));
+        const boxes = mergeBoxes(sheet);
+        const skip = new Set();
+        const span = new Map();
+        for (const box of boxes) {
+          const rows = visRows.filter((r) => r >= box.r1 && r <= box.r2);
+          const cols = visCols.filter((c) => c >= box.c1 && c <= box.c2);
+          if (!rows.length || !cols.length) continue;
+          span.set(`${rows[0]}:${cols[0]}`, { rs: rows.length, cs: cols.length, srcR: box.r1, srcC: box.c1 });
+          for (const r of rows) for (const c of cols) {
+            if (r !== rows[0] || c !== cols[0]) skip.add(`${r}:${c}`);
+          }
+        }
+
+        const ganttVisible = visCols.filter((c) => c >= freezeCol).length;
+        const lefts = [0];
+        let acc = GUTTER;
+        for (let i = 0; i < freezeCol; i++) {
+          lefts.push(acc);
+          acc += leftWidth(sheet, i);
+        }
+        const leftPane = GUTTER + Array.from({ length: freezeCol }, (_, i) => leftWidth(sheet, i)).reduce((s, w) => s + w, 0);
+        const leftCss = Array.from({ length: freezeCol }, (_, i) => `${leftWidth(sheet, i)}px`).join(" ");
+        const colsCss = ganttVisible
+          ? `${GUTTER}px ${leftCss} repeat(${ganttVisible}, ${DAY}px)`
+          : `${GUTTER}px ${leftCss || "1fr"}`;
+        const rowsCss = `repeat(${headRows}, ${HEAD}px) repeat(${Math.max(visRows.length - headRows, 0)}, ${ROW}px)`;
+        const width = leftPane + ganttVisible * DAY;
+
+        // column outline brackets (only for groups whose detail cols intersect visible gantt)
+        const outlineParts = [];
+        const visibleColGroups = colGroups.filter((g) => g.end >= freezeCol);
+        for (const g of visibleColGroups) {
+          const open = !collapsedCols.has(g.id);
+          const firstVis = visCols.find((c) => c >= g.start && c <= g.end);
+          const lastVis = [...visCols].reverse().find((c) => c >= g.start && c <= g.end);
+          const summaryVis = visCols.includes(g.summary);
+          if (open && firstVis != null && lastVis != null) {
+            const x1 = leftPane + (colPos.get(firstVis) - visCols.filter((c) => c < freezeCol).length) * DAY;
+            // colPos is index in visCols; gantt offset:
+            const ganttIndex = (c) => colPos.get(c) - visCols.filter((x) => x < freezeCol).length;
+            const left = leftPane + ganttIndex(firstVis) * DAY;
+            const right = leftPane + (ganttIndex(lastVis) + 1) * DAY;
+            outlineParts.push(`<div class="bracket" style="left:${left}px;width:${Math.max(right - left, 16)}px"></div>`);
+            const btnLeft = right - 18;
+            outlineParts.push(`<button class="toggle" data-col-group="${esc(g.id)}" style="left:${btnLeft}px" title="이 열 구간 접기">−</button>`);
+          } else if (!open && summaryVis && g.summary >= freezeCol) {
+            const ganttIndex = (c) => colPos.get(c) - visCols.filter((x) => x < freezeCol).length;
+            const left = leftPane + ganttIndex(g.summary) * DAY + (DAY - 18) / 2;
+            outlineParts.push(`<button class="toggle" data-col-group="${esc(g.id)}" style="left:${left}px" title="이 열 구간 펼치기">+</button>`);
+          } else if (!open) {
+            // summary left of freeze (label area) — put button on first remaining border
+            const edge = visCols.find((c) => c > g.end) ?? visCols.filter((c) => c >= freezeCol)[0];
+            if (edge != null && edge >= freezeCol) {
+              const ganttIndex = (c) => colPos.get(c) - visCols.filter((x) => x < freezeCol).length;
+              const left = leftPane + ganttIndex(edge) * DAY - 18;
+              outlineParts.push(`<button class="toggle" data-col-group="${esc(g.id)}" style="left:${Math.max(leftPane, left)}px" title="이 열 구간 펼치기">+</button>`);
+            }
+          }
+        }
+
+        const parts = [];
+        parts.push(`<div class="board" style="width:${width}px">`);
+        if (ganttVisible) {
+          parts.push(`<div class="col-outline" style="width:${width}px;margin-left:0"><div style="position:relative;height:18px;margin-left:0">${outlineParts.join("")}</div></div>`);
+        }
+        parts.push(`<div class="grid" style="grid-template-columns:${colsCss};grid-template-rows:${rowsCss};width:${width}px">`);
+
+        const rowToggleAt = new Map();
+        for (const g of rowGroups) {
+          if (collapsedRows.has(g.id)) {
+            if (visRows.includes(g.summary)) rowToggleAt.set(g.summary, { id: g.id, open: false });
+          } else if (visRows.includes(g.summary)) {
+            rowToggleAt.set(g.summary, { id: g.id, open: true });
+          }
+        }
+
+        visRows.forEach((r, vr) => {
+          let gutterHtml = "";
+          const tg = rowToggleAt.get(r);
+          if (tg) {
+            gutterHtml = `<div class="row-toggle-slot"><button class="toggle" data-row-group="${esc(tg.id)}" title="${tg.open ? "이 행 구간 접기" : "이 행 구간 펼치기"}">${tg.open ? "−" : "+"}</button></div>`;
+          }
+          const headTopPx = (ganttVisible ? COL_OUTLINE : 0) + vr * HEAD;
+          const stickyHead = vr < headRows ? `top:${headTopPx}px` : "";
+          parts.push(
+            `<div class="cell gutter ${vr < headRows ? "head" : ""} sticky" style="grid-column:1;grid-row:${vr + 1};left:0;${stickyHead};padding-left:${4 + (rowL[r] || 0) * 8}px">${gutterHtml}</div>`,
+          );
+          visCols.forEach((c) => {
+            if (skip.has(`${r}:${c}`)) return;
+            const sp = span.get(`${r}:${c}`) || { rs: 1, cs: 1, srcR: r, srcC: c };
+            const cell = sheet.rows[sp.srcR]?.[sp.srcC] || sheet.rows[r]?.[c] || {};
+            const isHead = r < headRows;
+            const sticky = c < freezeCol;
+            const gantt = !isHead && freezeCol < sheet.maxCol && c >= freezeCol;
+            const dayRow = Math.max(headRows - 1, 0);
+            // 휴일 회색은 일자 행·본문만 (월/주차 헤더는 제외)
+            const holiday = holidays.has(c) && (r === dayRow || r >= headRows);
+            const fill = cell.fill ? String(cell.fill) : "";
+            const status = gantt ? rowStatus(sheet, sp.srcR, freezeCol) : "";
+            const mark = gantt ? ganttMark(cell, status) : null;
+            let bg = fill || undefined;
+            let color = cell.color;
+            if (isHead && !bg) bg = c < freezeCol ? "#3d85c6" : "#f3f5f7";
+            if (isHead && fill && fill.toUpperCase() === "#666666") color = "#fff";
+            if (isHead && !color) color = c < freezeCol || (bg && String(bg).toUpperCase() === "#3D85C6") ? "#fff" : "#5b6166";
+            if (!isHead && sticky && !bg) bg = "#fff";
+            if (gantt && mark) bg = mark.bg;
+            else if (gantt && (!fill || fill.toUpperCase() === "#FFFFFF")) bg = holiday ? "#efefef" : "#fff";
+            if (holiday && !mark) bg = "#efefef";
+            if (holiday && r === dayRow) color = cell.color || "#c62828";
+            const gc = colPos.get(c) + 2;
+            const cls = ["cell", isHead ? "head" : "", sticky ? "sticky" : "", gantt ? "gantt" : "", mark ? mark.cls : "", holiday ? "holiday" : "", c === freezeCol - 1 ? "status" : ""].filter(Boolean).join(" ");
+            const stl = [
+              `grid-column:${gc} / span ${sp.cs}`,
+              `grid-row:${vr + 1} / span ${sp.rs}`,
+              isHead ? `top:${headTopPx}px` : "",
+              sticky ? `left:${lefts[c + 1]}px` : "",
+              bg ? `background:${bg}` : "",
+              color && !gantt ? `color:${color}` : "",
+              cell.b ? "font-weight:700" : "",
+              cell.h === "center" || isHead ? "justify-content:center;text-align:center" : "",
+              cell.u ? "text-decoration:underline" : "",
+            ].filter(Boolean).join(";");
+            // 일자 헤더는 앞 공백 제거해 숫자만 보이되, 휴일 열 회색은 유지
+            let text = (gantt && mark) || cell.v == null ? "" : esc(cell.v);
+            if (isHead && c >= freezeCol && isHolidayDayValue(cell.v)) text = esc(String(cell.v).trim());
+            else if (isHead && c >= freezeCol && cell.v != null) text = esc(String(cell.v).trim());
+            parts.push(`<div class="${cls}" style="${stl}">${text}</div>`);
+          });
+        });
+        parts.push("</div></div>");
+
+        const scroller = document.getElementById("scroller");
+        scroller.innerHTML = parts.join("");
+        document.querySelector(".wbs-bar h1").textContent = sheet.name === "WBS" ? "SEO 전략 기획" : sheet.name;
+
+        requestAnimationFrame(() => {
+          if (ganttVisible) {
+            scroller.scrollLeft = Math.max(0, leftPane + ganttVisible * DAY - scroller.clientWidth);
+          } else scroller.scrollLeft = 0;
+        });
+
+        scroller.onclick = (event) => {
+          const btn = event.target.closest("[data-row-group],[data-col-group]");
+          if (!btn) return;
+          if (btn.dataset.rowGroup != null) {
+            const id = btn.dataset.rowGroup;
+            if (collapsedRows.has(id)) collapsedRows.delete(id);
+            else collapsedRows.add(id);
+          } else {
+            const id = btn.dataset.colGroup;
+            if (collapsedCols.has(id)) collapsedCols.delete(id);
+            else collapsedCols.add(id);
+          }
+          renderSheet(sheet);
+        };
+
+        const maxRowL = rowL.length ? Math.max(0, ...rowL) : 0;
+        const maxColL = colL.length ? Math.max(0, ...colL) : 0;
+        const top = Math.max(maxRowL, maxColL);
+        const levelBox = document.getElementById("levels");
+        levelBox.innerHTML = top
+          ? Array.from({ length: top }, (_, i) => `<button type="button" data-level="${i + 1}">${i + 1}</button>`).join("")
+          : "";
+        levelBox.onclick = (event) => {
+          const btn = event.target.closest("[data-level]");
+          if (!btn) return;
+          const k = Number(btn.dataset.level);
+          // Excel: show levels 1..k → collapse groups with level >= k
+          collapsedRows.clear();
+          collapsedCols.clear();
+          for (const g of rowGroups) if (g.level >= k) collapsedRows.add(g.id);
+          for (const g of colGroups) if (g.level >= k) collapsedCols.add(g.id);
+          renderSheet(sheet);
+        };
+      }
+
+      fetch(window.TASSI.api("wbs"))
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        })
+        .then((data) => {
+          const sheets = (data.sheets || []).filter((sheet) => sheet.name !== "-");
+          if (!sheets.length) throw new Error("시트가 없습니다.");
+          const prefer = sheets.find((s) => s.name === "WBS") || sheets[0];
+          const tabs = document.getElementById("sheets");
+          sheets.forEach((sheet) => {
+            const btn = document.createElement("button");
+            btn.textContent = sheet.name;
+            if (sheet === prefer) btn.className = "on";
+            btn.onclick = () => {
+              tabs.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+              btn.classList.add("on");
+              renderSheet(sheet);
+            };
+            tabs.appendChild(btn);
+          });
+          renderSheet(prefer);
+        })
+        .catch((err) => {
+          document.getElementById("scroller").innerHTML =
+            `<div style="padding:24px;color:#d1242f">WBS를 불러오지 못했습니다. ${esc(err.message || err)}</div>`;
+        });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,734 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// 공통
+// ---------------------------------------------------------------------------
+
+enum AdDeviceType {
+  ALL
+  PC
+  MOBILE
+}
+
+enum BlogTrafficCategory {
+  SEARCH
+  SNS
+  OTHER
+}
+
+enum BlogDeviceType {
+  MOBILE
+  PC
+}
+
+enum IngestSource {
+  NAVER_ADS
+  NAVER_BLOG
+  TISTORY_BLOG
+  VELOG
+  BRUNCH
+  KEYWORD_TOOL
+}
+
+enum BlogPlatform {
+  TISTORY
+  NAVER
+  VELOG
+  BRUNCH
+}
+
+enum IngestStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+/// 리포트 대상 고객사(브랜드). 광고 계정과 블로그를 한 화면에서 묶는다.
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  timezone  String   @default("Asia/Seoul")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  adAccounts      NaverAdAccount[]
+  blogs           Blog[]
+  keywordInsights KeywordInsight[]
+  ingestBatches   IngestBatch[]
+
+  @@map("clients")
+}
+
+/// 데이터 적재 이력. 덤프/API 수집 단위를 추적한다.
+model IngestBatch {
+  id           String       @id @default(cuid())
+  clientId     String       @map("client_id")
+  source       IngestSource
+  status       IngestStatus @default(PENDING)
+  periodStart  DateTime?    @map("period_start") @db.Date
+  periodEnd    DateTime?    @map("period_end") @db.Date
+  note         String?
+  rowCount     Int          @default(0) @map("row_count")
+  errorMessage String?      @map("error_message")
+  startedAt    DateTime?    @map("started_at")
+  finishedAt   DateTime?    @map("finished_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, source, createdAt])
+  @@map("ingest_batches")
+}
+
+/// 웹이 그대로 쓰는 리포트 문서 (블로그 / 광고 / WBS).
+model AppDocument {
+  id        String   @id
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_documents")
+}
+
+// ---------------------------------------------------------------------------
+// 네이버 검색광고 — 마스터
+// 계층: 계정 → 캠페인 → 광고그룹 → (키워드 | 소재)
+// ---------------------------------------------------------------------------
+
+/// 네이버 검색광고 계정 (API CUSTOMER_ID)
+model NaverAdAccount {
+  id            String    @id @default(cuid())
+  clientId      String    @map("client_id")
+  /// 네이버 검색광고 CUSTOMER_ID
+  customerId    String    @unique @map("customer_id")
+  name          String
+  /// 시크릿은 DB에 두지 않고, 환경변수/시크릿 매니저 키 이름만 저장
+  credentialRef String?   @map("credential_ref")
+  isActive      Boolean   @default(true) @map("is_active")
+  lastSyncedAt  DateTime? @map("last_synced_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  client    Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  channels  NaverBusinessChannel[]
+  campaigns NaverAdCampaign[]
+
+  @@index([clientId])
+  @@map("naver_ad_accounts")
+}
+
+/// 사업채널(연결 URL). 광고그룹의 PC/모바일 랜딩과 검수 상태.
+model NaverBusinessChannel {
+  id            String   @id @default(cuid())
+  accountId     String   @map("account_id")
+  /// 네이버 채널 ID (bsn-a001-...)
+  nccChannelId  String   @unique @map("ncc_channel_id")
+  name          String?
+  siteUrl       String?  @map("site_url")
+  /// PC / MOBILE / BOTH
+  channelType   String?  @map("channel_type")
+  inspectStatus String?  @map("inspect_status")
+  isEnabled     Boolean  @default(true) @map("is_enabled")
+  rawJson       Json?    @map("raw_json")
+  syncedAt      DateTime @default(now()) @map("synced_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  account NaverAdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("naver_business_channels")
+}
+
+/// 캠페인. 스크린샷의 캠페인명/유형/일예산/노출방식에 해당.
+model NaverAdCampaign {
+  id             String    @id @default(cuid())
+  accountId      String    @map("account_id")
+  /// 네이버 캠페인 ID (cmp-a001-...)
+  nccCampaignId  String    @unique @map("ncc_campaign_id")
+  name           String
+  /// WEB_SITE(파워링크), SHOPPING, POWER_CONTENTS, BRAND_SEARCH, PLACE 등
+  campaignType   String    @map("campaign_type")
+  /// true면 사용자 중지(OFF)
+  userLock       Boolean   @default(false) @map("user_lock")
+  /// ELIGIBLE(운영가능) 등
+  status         String?
+  statusReason   String?   @map("status_reason")
+  /// STANDARD(일반노출), ACCELERATED(빠른노출)
+  deliveryMethod String?   @map("delivery_method")
+  dailyBudget    BigInt?   @map("daily_budget")
+  useDailyBudget Boolean?  @map("use_daily_budget")
+  usePeriod      Boolean?  @map("use_period")
+  periodStart    DateTime? @map("period_start") @db.Date
+  periodEnd      DateTime? @map("period_end") @db.Date
+  trackingMode   String?   @map("tracking_mode")
+  isDeleted      Boolean   @default(false) @map("is_deleted")
+  registeredAt   DateTime? @map("registered_at")
+  editedAt       DateTime? @map("edited_at")
+  rawJson        Json?     @map("raw_json")
+  syncedAt       DateTime  @default(now()) @map("synced_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  account  NaverAdAccount           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  adGroups NaverAdGroup[]
+  stats    NaverCampaignStatDaily[]
+
+  @@index([accountId, isDeleted])
+  @@map("naver_ad_campaigns")
+}
+
+/// 광고그룹. 스크린샷 하단 테이블 행에 해당.
+model NaverAdGroup {
+  id                     String    @id @default(cuid())
+  campaignId             String    @map("campaign_id")
+  /// 네이버 광고그룹 ID (grp-a001-...)
+  nccAdgroupId           String    @unique @map("ncc_adgroup_id")
+  name                   String
+  userLock               Boolean   @default(false) @map("user_lock")
+  status                 String?
+  statusReason           String?   @map("status_reason")
+  /// 기본 입찰가(원)
+  bidAmt                 BigInt?   @map("bid_amt")
+  dailyBudget            BigInt?   @map("daily_budget")
+  pcChannelId            String?   @map("pc_channel_id")
+  mobileChannelId        String?   @map("mobile_channel_id")
+  pcChannelUrl           String?   @map("pc_channel_url")
+  mobileChannelUrl       String?   @map("mobile_channel_url")
+  pcChannelStatus        String?   @map("pc_channel_status")
+  mobileChannelStatus    String?   @map("mobile_channel_status")
+  contentsNetworkBidAmt  BigInt?   @map("contents_network_bid_amt")
+  useContentsNetworkBid  Boolean?  @map("use_contents_network_bid")
+  pcNetworkBidWeight     Int?      @map("pc_network_bid_weight")
+  mobileNetworkBidWeight Int?      @map("mobile_network_bid_weight")
+  isDeleted              Boolean   @default(false) @map("is_deleted")
+  registeredAt           DateTime? @map("registered_at")
+  editedAt               DateTime? @map("edited_at")
+  rawJson                Json?     @map("raw_json")
+  syncedAt               DateTime  @default(now()) @map("synced_at")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  campaign NaverAdCampaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  keywords NaverAdKeyword[]
+  ads      NaverAd[]
+  stats    NaverAdGroupStatDaily[]
+
+  @@index([campaignId, isDeleted])
+  @@map("naver_ad_groups")
+}
+
+/// 등록 키워드(광고에 넣은 키워드). 검색어(유저 쿼리)와는 별개.
+model NaverAdKeyword {
+  id            String    @id @default(cuid())
+  adGroupId     String    @map("ad_group_id")
+  nccKeywordId  String    @unique @map("ncc_keyword_id")
+  keyword       String
+  bidAmt        BigInt?   @map("bid_amt")
+  userLock      Boolean   @default(false) @map("user_lock")
+  status        String?
+  inspectStatus String?   @map("inspect_status")
+  pcUrl         String?   @map("pc_url")
+  mobileUrl     String?   @map("mobile_url")
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  registeredAt  DateTime? @map("registered_at")
+  editedAt      DateTime? @map("edited_at")
+  rawJson       Json?     @map("raw_json")
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  adGroup NaverAdGroup            @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  stats   NaverKeywordStatDaily[]
+
+  @@index([adGroupId, isDeleted])
+  @@index([keyword])
+  @@map("naver_ad_keywords")
+}
+
+/// 광고 소재(제목/설명 등)
+model NaverAd {
+  id            String    @id @default(cuid())
+  adGroupId     String    @map("ad_group_id")
+  nccAdId       String    @unique @map("ncc_ad_id")
+  adType        String?   @map("ad_type")
+  headline      String?
+  description   String?
+  inspectStatus String?   @map("inspect_status")
+  userLock      Boolean   @default(false) @map("user_lock")
+  status        String?
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  registeredAt  DateTime? @map("registered_at")
+  editedAt      DateTime? @map("edited_at")
+  rawJson       Json?     @map("raw_json")
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  adGroup NaverAdGroup       @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  stats   NaverAdStatDaily[]
+
+  @@index([adGroupId, isDeleted])
+  @@map("naver_ads")
+}
+
+// ---------------------------------------------------------------------------
+// 네이버 검색광고 — 일별 성과
+// 원천 지표: impCnt, clkCnt, salesAmt, ctr, cpc, avgRnk, ccnt, crto, convAmt, ror
+// CTR/CPC 등은 원천(노출·클릭·비용)에서 재계산 가능하나, 네이버 화면과
+// 숫자를 맞추기 위해 API 제공값을 함께 저장한다.
+// ---------------------------------------------------------------------------
+
+model NaverCampaignStatDaily {
+  id         String       @id @default(cuid())
+  campaignId String       @map("campaign_id")
+  statDate   DateTime     @map("stat_date") @db.Date
+  deviceType AdDeviceType @default(ALL) @map("device_type")
+
+  impressions       BigInt   @default(0)
+  clicks            BigInt   @default(0)
+  /// 총 비용(원) = salesAmt
+  cost              Decimal  @default(0) @db.Decimal(18, 4)
+  ctr               Decimal? @db.Decimal(10, 6)
+  cpc               Decimal? @db.Decimal(18, 4)
+  avgRank           Decimal? @map("avg_rank") @db.Decimal(10, 4)
+  conversions       Decimal? @db.Decimal(18, 4)
+  conversionRate    Decimal? @map("conversion_rate") @db.Decimal(10, 6)
+  conversionValue   Decimal? @map("conversion_value") @db.Decimal(18, 4)
+  /// 네이버 ror는 % 단위 (350 = 350%)
+  roasPct           Decimal? @map("roas_pct") @db.Decimal(18, 4)
+  viewCnt           BigInt?  @map("view_cnt")
+  costPerConversion Decimal? @map("cost_per_conversion") @db.Decimal(18, 4)
+  recentAvgRank     Decimal? @map("recent_avg_rank") @db.Decimal(10, 4)
+  recentAvgCpc      Decimal? @map("recent_avg_cpc") @db.Decimal(18, 4)
+  pcNxAvgRank       Decimal? @map("pc_nx_avg_rank") @db.Decimal(10, 4)
+  mblNxAvgRank      Decimal? @map("mbl_nx_avg_rank") @db.Decimal(10, 4)
+  rawJson           Json?    @map("raw_json")
+  collectedAt       DateTime @default(now()) @map("collected_at")
+
+  campaign NaverAdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, statDate, deviceType])
+  @@index([statDate])
+  @@map("naver_campaign_stats_daily")
+}
+
+model NaverAdGroupStatDaily {
+  id         String       @id @default(cuid())
+  adGroupId  String       @map("ad_group_id")
+  statDate   DateTime     @map("stat_date") @db.Date
+  deviceType AdDeviceType @default(ALL) @map("device_type")
+
+  impressions       BigInt   @default(0)
+  clicks            BigInt   @default(0)
+  cost              Decimal  @default(0) @db.Decimal(18, 4)
+  ctr               Decimal? @db.Decimal(10, 6)
+  cpc               Decimal? @db.Decimal(18, 4)
+  avgRank           Decimal? @map("avg_rank") @db.Decimal(10, 4)
+  conversions       Decimal? @db.Decimal(18, 4)
+  conversionRate    Decimal? @map("conversion_rate") @db.Decimal(10, 6)
+  conversionValue   Decimal? @map("conversion_value") @db.Decimal(18, 4)
+  roasPct           Decimal? @map("roas_pct") @db.Decimal(18, 4)
+  viewCnt           BigInt?  @map("view_cnt")
+  costPerConversion Decimal? @map("cost_per_conversion") @db.Decimal(18, 4)
+  recentAvgRank     Decimal? @map("recent_avg_rank") @db.Decimal(10, 4)
+  recentAvgCpc      Decimal? @map("recent_avg_cpc") @db.Decimal(18, 4)
+  pcNxAvgRank       Decimal? @map("pc_nx_avg_rank") @db.Decimal(10, 4)
+  mblNxAvgRank      Decimal? @map("mbl_nx_avg_rank") @db.Decimal(10, 4)
+  rawJson           Json?    @map("raw_json")
+  collectedAt       DateTime @default(now()) @map("collected_at")
+
+  adGroup NaverAdGroup @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([adGroupId, statDate, deviceType])
+  @@index([statDate])
+  @@map("naver_adgroup_stats_daily")
+}
+
+model NaverKeywordStatDaily {
+  id         String       @id @default(cuid())
+  keywordId  String       @map("keyword_id")
+  statDate   DateTime     @map("stat_date") @db.Date
+  deviceType AdDeviceType @default(ALL) @map("device_type")
+
+  impressions       BigInt   @default(0)
+  clicks            BigInt   @default(0)
+  cost              Decimal  @default(0) @db.Decimal(18, 4)
+  ctr               Decimal? @db.Decimal(10, 6)
+  cpc               Decimal? @db.Decimal(18, 4)
+  avgRank           Decimal? @map("avg_rank") @db.Decimal(10, 4)
+  conversions       Decimal? @db.Decimal(18, 4)
+  conversionRate    Decimal? @map("conversion_rate") @db.Decimal(10, 6)
+  conversionValue   Decimal? @map("conversion_value") @db.Decimal(18, 4)
+  roasPct           Decimal? @map("roas_pct") @db.Decimal(18, 4)
+  viewCnt           BigInt?  @map("view_cnt")
+  costPerConversion Decimal? @map("cost_per_conversion") @db.Decimal(18, 4)
+  rawJson           Json?    @map("raw_json")
+  collectedAt       DateTime @default(now()) @map("collected_at")
+
+  keyword NaverAdKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([keywordId, statDate, deviceType])
+  @@index([statDate])
+  @@map("naver_keyword_stats_daily")
+}
+
+model NaverAdStatDaily {
+  id         String       @id @default(cuid())
+  adId       String       @map("ad_id")
+  statDate   DateTime     @map("stat_date") @db.Date
+  deviceType AdDeviceType @default(ALL) @map("device_type")
+
+  impressions       BigInt   @default(0)
+  clicks            BigInt   @default(0)
+  cost              Decimal  @default(0) @db.Decimal(18, 4)
+  ctr               Decimal? @db.Decimal(10, 6)
+  cpc               Decimal? @db.Decimal(18, 4)
+  avgRank           Decimal? @map("avg_rank") @db.Decimal(10, 4)
+  conversions       Decimal? @db.Decimal(18, 4)
+  conversionRate    Decimal? @map("conversion_rate") @db.Decimal(10, 6)
+  conversionValue   Decimal? @map("conversion_value") @db.Decimal(18, 4)
+  roasPct           Decimal? @map("roas_pct") @db.Decimal(18, 4)
+  viewCnt           BigInt?  @map("view_cnt")
+  costPerConversion Decimal? @map("cost_per_conversion") @db.Decimal(18, 4)
+  rawJson           Json?    @map("raw_json")
+  collectedAt       DateTime @default(now()) @map("collected_at")
+
+  ad NaverAd @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@unique([adId, statDate, deviceType])
+  @@index([statDate])
+  @@map("naver_ad_stats_daily")
+}
+
+/// 실제 사용자 검색어(쿼리) 성과. 등록 키워드와 다름 (EXPKEYWORD 리포트).
+model NaverSearchTermStatDaily {
+  id            String       @id @default(cuid())
+  adGroupId     String?      @map("ad_group_id")
+  nccCampaignId String       @default("") @map("ncc_campaign_id")
+  nccAdgroupId  String       @default("") @map("ncc_adgroup_id")
+  nccKeywordId  String       @default("") @map("ncc_keyword_id")
+  searchTerm    String       @map("search_term")
+  statDate      DateTime     @map("stat_date") @db.Date
+  deviceType    AdDeviceType @default(ALL) @map("device_type")
+  impressions   BigInt       @default(0)
+  clicks        BigInt       @default(0)
+  cost          Decimal      @default(0) @db.Decimal(18, 4)
+  rawJson       Json?        @map("raw_json")
+  collectedAt   DateTime     @default(now()) @map("collected_at")
+
+  @@unique([nccAdgroupId, searchTerm, statDate, deviceType])
+  @@index([statDate])
+  @@index([searchTerm])
+  @@map("naver_search_term_stats_daily")
+}
+
+/// 키워드 도구(월간 조회수·경쟁정도). SEO 리포트용.
+model KeywordInsight {
+  id                     String   @id @default(cuid())
+  clientId               String   @map("client_id")
+  keyword                String
+  collectedDate          DateTime @map("collected_date") @db.Date
+  monthlyPcQcCnt         BigInt?  @map("monthly_pc_qc_cnt")
+  monthlyMobileQcCnt     BigInt?  @map("monthly_mobile_qc_cnt")
+  monthlyAvePcClkCnt     Decimal? @map("monthly_ave_pc_clk_cnt") @db.Decimal(18, 4)
+  monthlyAveMobileClkCnt Decimal? @map("monthly_ave_mobile_clk_cnt") @db.Decimal(18, 4)
+  monthlyAvePcCtr        Decimal? @map("monthly_ave_pc_ctr") @db.Decimal(10, 6)
+  monthlyAveMobileCtr    Decimal? @map("monthly_ave_mobile_ctr") @db.Decimal(10, 6)
+  /// 경쟁 정도 (높음/중간/낮음 또는 수치)
+  competition            String?
+  plAvgDepth             Decimal? @map("pl_avg_depth") @db.Decimal(10, 4)
+  rawJson                Json?    @map("raw_json")
+  collectedAt            DateTime @default(now()) @map("collected_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, keyword, collectedDate])
+  @@index([keyword])
+  @@map("keyword_insights")
+}
+
+// ---------------------------------------------------------------------------
+// 블로그 통계 (티스토리 / 네이버)
+// ---------------------------------------------------------------------------
+
+model Blog {
+  id              String       @id @default(cuid())
+  clientId        String       @map("client_id")
+  platform        BlogPlatform
+  /// 티스토리: example.tistory.com 의 example / 네이버: 블로그 아이디
+  blogUserId      String       @map("blog_user_id")
+  name            String?
+  url             String?
+  subscriberCount Int?         @map("subscriber_count")
+  lastSyncedAt    DateTime?    @map("last_synced_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  client         Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  posts          BlogPost[]
+  dailyStats     BlogStatDaily[]
+  hourlyStats    BlogStatHourly[]
+  trafficSources BlogTrafficSourceDaily[]
+  deviceStats    BlogDeviceStatDaily[]
+  popularPosts   BlogPopularPostDaily[]
+  inflowKeywords BlogInflowKeywordDaily[]
+  demographics   BlogDemographicDaily[]
+
+  @@unique([platform, blogUserId])
+  @@index([clientId])
+  @@map("blogs")
+}
+
+model BlogPost {
+  id          String    @id @default(cuid())
+  blogId      String    @map("blog_id")
+  /// 네이버 logNo 등
+  externalId  String    @map("external_id")
+  title       String?
+  url         String?
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  blog        Blog                   @relation(fields: [blogId], references: [id], onDelete: Cascade)
+  popularRows BlogPopularPostDaily[]
+  dailyStats  BlogPostStatDaily[]
+
+  @@unique([blogId, externalId])
+  @@map("blog_posts")
+}
+
+/// 글 단위 일별 조회수 (벨로그 getStats 등)
+model BlogPostStatDaily {
+  id          String   @id @default(cuid())
+  postId      String   @map("post_id")
+  statDate    DateTime @map("stat_date") @db.Date
+  views       BigInt   @default(0)
+  likes       BigInt?
+  comments    BigInt?
+  rawJson     Json?    @map("raw_json")
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  post BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, statDate])
+  @@index([statDate])
+  @@map("blog_post_stats_daily")
+}
+
+/// 일별 조회수/방문자/누적. 스크린샷 상단 요약 + 차트(일/주/월 집계 원천).
+model BlogStatDaily {
+  id                 String   @id @default(cuid())
+  blogId             String   @map("blog_id")
+  statDate           DateTime @map("stat_date") @db.Date
+  /// 조회수 (cv)
+  views              BigInt   @default(0)
+  /// 방문자 / 순방문 (uv)
+  visitors           BigInt   @default(0)
+  /// 방문 횟수
+  visits             BigInt?
+  avgDurationSeconds Decimal? @map("avg_duration_seconds") @db.Decimal(12, 2)
+  revisitRate        Decimal? @map("revisit_rate") @db.Decimal(10, 6)
+  subscriberCount    Int?     @map("subscriber_count")
+  /// 네이버가 보여주는 생애 누적. 수집 시작 전 이력 때문에 일별 합과 다를 수 있음
+  cumulativeViews    BigInt?  @map("cumulative_views")
+  cumulativeVisitors BigInt?  @map("cumulative_visitors")
+  rawJson            Json?    @map("raw_json")
+  collectedAt        DateTime @default(now()) @map("collected_at")
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@unique([blogId, statDate])
+  @@index([statDate])
+  @@map("blog_stats_daily")
+}
+
+/// 시간대별 조회수/방문자. 스크린샷 시간 차트.
+model BlogStatHourly {
+  id          String   @id @default(cuid())
+  blogId      String   @map("blog_id")
+  statDate    DateTime @map("stat_date") @db.Date
+  /// 0–23
+  hour        Int
+  views       BigInt   @default(0)
+  visitors    BigInt   @default(0)
+  rawJson     Json?    @map("raw_json")
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@unique([blogId, statDate, hour])
+  @@index([statDate])
+  @@map("blog_stats_hourly")
+}
+
+/// 유입 경로. 검색(네이버/다음/구글…) · SNS · 직접/기타.
+model BlogTrafficSourceDaily {
+  id          String              @id @default(cuid())
+  blogId      String              @map("blog_id")
+  statDate    DateTime            @map("stat_date") @db.Date
+  category    BlogTrafficCategory
+  /// naver, daum, google, zum, bing, yahoo, kakaotalk, facebook, direct …
+  sourceCode  String              @map("source_code")
+  sourceName  String?             @map("source_name")
+  views       BigInt              @default(0)
+  visitors    BigInt?
+  rawJson     Json?               @map("raw_json")
+  collectedAt DateTime            @default(now()) @map("collected_at")
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@unique([blogId, statDate, category, sourceCode])
+  @@index([statDate])
+  @@map("blog_traffic_sources_daily")
+}
+
+/// 디바이스 비중 (모바일 / PC)
+model BlogDeviceStatDaily {
+  id          String         @id @default(cuid())
+  blogId      String         @map("blog_id")
+  statDate    DateTime       @map("stat_date") @db.Date
+  deviceType  BlogDeviceType @map("device_type")
+  views       BigInt         @default(0)
+  visitors    BigInt?
+  sharePct    Decimal?       @map("share_pct") @db.Decimal(7, 4)
+  rawJson     Json?          @map("raw_json")
+  collectedAt DateTime       @default(now()) @map("collected_at")
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@unique([blogId, statDate, deviceType])
+  @@map("blog_device_stats_daily")
+}
+
+/// 인기글 랭킹
+model BlogPopularPostDaily {
+  id          String   @id @default(cuid())
+  blogId      String   @map("blog_id")
+  postId      String?  @map("post_id")
+  statDate    DateTime @map("stat_date") @db.Date
+  rank        Int
+  title       String?
+  url         String?
+  views       BigInt   @default(0)
+  rawJson     Json?    @map("raw_json")
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  blog Blog      @relation(fields: [blogId], references: [id], onDelete: Cascade)
+  post BlogPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@unique([blogId, statDate, rank])
+  @@index([statDate])
+  @@map("blog_popular_posts_daily")
+}
+
+/// 유입 키워드
+model BlogInflowKeywordDaily {
+  id          String   @id @default(cuid())
+  blogId      String   @map("blog_id")
+  statDate    DateTime @map("stat_date") @db.Date
+  keyword     String
+  rank        Int?
+  views       BigInt   @default(0)
+  visitors    BigInt?
+  rawJson     Json?    @map("raw_json")
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@unique([blogId, statDate, keyword])
+  @@index([keyword])
+  @@index([statDate])
+  @@map("blog_inflow_keywords_daily")
+}
+
+/// 성별·연령 등 사용자 분석 (관리 통계에서 수집 가능)
+model BlogDemographicDaily {
+  id          String   @id @default(cuid())
+  blogId      String   @map("blog_id")
+  statDate    DateTime @map("stat_date") @db.Date
+  /// F / M / UNKNOWN
+  gender      String   @default("UNKNOWN")
+  /// 10 / 20 / 30 / 40 / 50 / 60 / UNKNOWN
+  ageGroup    String   @default("UNKNOWN") @map("age_group")
+  views       BigInt   @default(0)
+  visitors    BigInt?
+  sharePct    Decimal? @map("share_pct") @db.Decimal(7, 4)
+  rawJson     Json?    @map("raw_json")
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@unique([blogId, statDate, gender, ageGroup])
+  @@index([statDate])
+  @@map("blog_demographics_daily")
+}
+
+// ---------------------------------------------------------------------------
+// ShipType 시뮬레이터 로그 (SEO 리포트와 같은 프로젝트, 별도 앱)
+// 테이블 2개 + 보기용 뷰 1개. 대시보드 SQL Editor에서 보는 게 맞다.
+// Table Editor는 RLS 때문에 비어 보일 수 있다.
+// shiptype_analytics_ingest 는 테이블이 아니라 앱이 넣는 함수다. 조회하지 말 것.
+// 셋업 테스트 행: visitor_id 00000000-0000-4000-8000-000000000000, 경로 /setup-check
+// ---------------------------------------------------------------------------
+
+/// 사람 1명 = 1행. 브라우저 localStorage visitor_id. 같은 폰/PC면 재방문해도 동일.
+model ShiptypeAnalyticsVisitor {
+  id                 String   @id @db.Uuid
+  firstSeenAt        DateTime @map("first_seen_at") @db.Timestamptz
+  lastSeenAt         DateTime @map("last_seen_at") @db.Timestamptz
+  firstReferrer      String?  @map("first_referrer")
+  firstLandingPath   String?  @map("first_landing_path")
+  firstUtmSource     String?  @map("first_utm_source")
+  firstUtmMedium     String?  @map("first_utm_medium")
+  firstUtmCampaign   String?  @map("first_utm_campaign")
+  firstUtmContent    String?  @map("first_utm_content")
+  firstUtmTerm       String?  @map("first_utm_term")
+  lastUtmSource      String?  @map("last_utm_source")
+  lastUtmMedium      String?  @map("last_utm_medium")
+  lastUtmCampaign    String?  @map("last_utm_campaign")
+  lastUtmContent     String?  @map("last_utm_content")
+  lastUtmTerm        String?  @map("last_utm_term")
+  eventCount         Int      @default(0) @map("event_count")
+
+  events ShiptypeAnalyticsEvent[]
+
+  @@map("shiptype_analytics_visitors")
+}
+
+/// 행동 1번 = 1행. visit / start / result / cta_click / share / save_image / retry
+model ShiptypeAnalyticsEvent {
+  id          String   @id @db.Uuid
+  visitorId   String   @map("visitor_id") @db.Uuid
+  playId      String?  @map("play_id")
+  eventName   String   @map("event_name")
+  resultSlug  String?  @map("result_slug")
+  resultName  String?  @map("result_name")
+  landingPath String?  @map("landing_path")
+  referrer    String?  @map("referrer")
+  utmSource   String?  @map("utm_source")
+  utmMedium   String?  @map("utm_medium")
+  utmCampaign String?  @map("utm_campaign")
+  utmContent  String?  @map("utm_content")
+  utmTerm     String?  @map("utm_term")
+  properties  Json     @default("{}")
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz
+
+  visitor ShiptypeAnalyticsVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+
+  @@index([visitorId])
+  @@index([occurredAt])
+  @@map("shiptype_analytics_events")
+}
+
+/// 보기 전용 뷰 shiptype_analytics_timeline (이벤트 + 그 사람의 첫 UTM). Prisma 모델 없음.

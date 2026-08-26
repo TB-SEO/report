@@ -1,0 +1,43 @@
+{
+  "name": "seo-report-server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "네이버 키워드 광고 + 블로그 통계 통합 리포트 서버",
+  "type": "module",
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "db:sync": "tsx src/scripts/sync-to-supabase.ts",
+    "db:check": "tsx src/scripts/check-schema.ts",
+    "db:grants": "prisma db execute --schema prisma/schema.prisma --file prisma/supabase-grants.sql",
+    "db:push": "prisma db push",
+    "prisma:studio": "prisma studio",
+    "login": "tsx src/collectors/login.ts",
+    "tistory:login": "tsx src/collectors/tistory/login.ts",
+    "tistory:collect": "tsx src/collectors/tistory/collect.ts",
+    "tistory:crawl": "tsx src/collectors/tistory/crawl.ts",
+    "velog:crawl": "tsx src/collectors/velog/crawl.ts",
+    "brunch:crawl": "tsx src/collectors/brunch/crawl.ts",
+    "crawl:all": "tsx src/collectors/crawl-all.ts",
+    "ads:login": "tsx src/collectors/ads/login.ts",
+    "ads:probe": "tsx src/collectors/ads/probe.ts",
+    "ads:crawl": "tsx src/collectors/ads/crawl.ts",
+    "web": "tsx src/web/server.ts",
+    "week:save": "tsx src/scripts/save-week.ts",
+    "pages": "tsx src/scripts/publish-pages.ts",
+    "tistory:ingest": "tsx src/collectors/tistory/ingest.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.14.0",
+    "@supabase/supabase-js": "^2.112.4",
+    "dotenv": "^16.6.1",
+    "playwright": "^1.55.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.14.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.2"
+  }
+}
