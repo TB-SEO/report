@@ -104,6 +104,7 @@
         vertical-align: top;
       }
       .chart-cap { font-size: 11px; color: #9aa1ac; padding-bottom: 6px; }
+      .chart-cap.split { padding-top: 10px; }
       .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 11px; color: #7a8291; }
       .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 1px; margin-right: 5px; vertical-align: 0; }
       .legend .ln {
@@ -208,38 +209,11 @@
         .tag.NAVER { color: #03c75a; }
         .tag.GOOGLE { color: #4285f4; }
         #pdf-wbs .pdf-wbs-page { overflow: hidden; width: 100%; }
-        #pdf-wbs .wbs-fit { overflow: hidden; width: 100% !important; max-width: 100%; height: auto !important; }
-        #pdf-wbs .grid {
-          display: grid;
-          width: 100% !important;
-          max-width: 100%;
-          transform: none !important;
-        }
-        #pdf-wbs .cell {
-          border-right: 1px solid #e4e7ea; border-bottom: 1px solid #e4e7ea;
-          padding: 0 5px; font-size: 11px; line-height: 14px; display: flex; align-items: center;
-          min-width: 0; overflow: hidden; background: #fff; color: #2f3438;
-          white-space: nowrap;
-        }
-        #pdf-wbs .cell.head { font-weight: 700; font-size: 10px; justify-content: center; text-align: center; white-space: nowrap; }
-        #pdf-wbs .cell.bar { background: #d9ead3 !important; box-shadow: inset 0 0 0 1px #b6d7a8; }
-        #pdf-wbs .cell.bar-done { background: #d9ead3 !important; box-shadow: inset 0 0 0 1px #b6d7a8; }
-        #pdf-wbs .cell.bar-ing { background: #fff2cc !important; box-shadow: inset 0 0 0 1px #f0e0a0; }
-        #pdf-wbs .cell.bar-wait { background: #f4cccc !important; box-shadow: inset 0 0 0 1px #e8b4b4; }
-        #pdf-wbs .cell.bar-plan { background: #fce5cd !important; box-shadow: inset 0 0 0 1px #f0c89a; }
-        #pdf-wbs .cell.holiday:not(.bar-done):not(.bar-ing):not(.bar-wait):not(.bar-plan) { background: #efefef !important; }
-        #pdf-wbs .cell.holiday.head { color: #c62828 !important; }
-        #pdf-wbs table.wbs-table { width: 100%; border-collapse: collapse; table-layout: auto; }
-        #pdf-wbs table.wbs-table th, #pdf-wbs table.wbs-table td {
-          border: 1px solid #e2e5e9; padding: 7px 8px; font-size: 11px; line-height: 15px; vertical-align: middle;
-          white-space: nowrap; text-align: left;
-        }
-        #pdf-wbs table.wbs-table th { background: #f5f6f8; color: #4a5261; font-weight: 700; }
-        #pdf-wbs table.wbs-table tr.sec td {
-          background: #eef3ff; color: #2d5be3; font-weight: 700; font-size: 13px; padding: 10px 12px;
-        }
-        #pdf-wbs table.wbs-table td.change, #pdf-wbs table.wbs-table th.change,
-        #pdf-wbs table.wbs-table td.note, #pdf-wbs table.wbs-table th.note { white-space: normal; }
+        #pdf-wbs .wbs-fit { overflow: hidden; width: 100%; max-width: 100%; transform-origin: top left; }
+        #pdf-wbs table.waffle { border-collapse: collapse; }
+        #pdf-wbs .row-header,
+        #pdf-wbs th.row-header,
+        #pdf-wbs .freezebar-cell { display: none !important; }
       }
     </style>
   </head>
@@ -538,8 +512,9 @@
         if (n <= 0) return 1;
         const pow = Math.pow(10, Math.floor(Math.log10(n)));
         const d = n / pow;
-        const nice = d <= 1 ? 1 : d <= 2 ? 2 : d <= 5 ? 5 : 10;
-        return nice * pow;
+        const nice = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => d <= s) || 10;
+        const v = nice * pow;
+        return v >= 10 ? Math.round(v) : Math.round(v * 100) / 100;
       }
       function delta(cur, prev) {
         if (prev == null || prev === 0) {
@@ -713,6 +688,7 @@
       function serviceIn(from, to) {
         const events = (svc?.events || []).filter((e) => inRange(e.date, from, to));
         const visitors = new Set(events.map((e) => e.visitorId));
+        const ips = new Set(events.map((e) => e.lastIpMasked || e.clientIpMasked).filter(Boolean));
         const plays = new Set(events.map((e) => e.playId).filter(Boolean));
         const funnel = {};
         const people = {};
@@ -732,6 +708,7 @@
         return {
           events: events.length,
           visitors: visitors.size,
+          ips: ips.size,
           plays: plays.size,
           results: events.filter((e) => e.eventName === "result").length,
           funnel,
@@ -768,13 +745,16 @@
       function svgChart({ rows, keys, colors, lines = [], lineColors = {}, width = 400, height = 190 }) {
         const L = 36, R = lines.length ? 36 : 12, T = 10, B = 26;
         const plotW = width - L - R, plotH = height - T - B;
-        const stackMax = Math.max(1, ...rows.map((r) => keys.reduce((s, k) => s + (r.stack[k] || 0), 0)));
-        const lineMax = lines.length ? Math.max(1, ...rows.map((r) => lines.reduce((s, k) => s + (r.line[k] || 0), 0))) : 1;
-        const yMax = niceCeil(stackMax);
+        const barMax = Math.max(1, ...rows.flatMap((r) => keys.map((k) => r.stack[k] || 0)));
+        const lineMax = lines.length ? Math.max(1, ...rows.flatMap((r) => lines.map((k) => r.line[k] || 0))) : 1;
+        const yMax = niceCeil(barMax);
         const yLine = niceCeil(lineMax);
         const n = Math.max(1, rows.length);
         const slot = plotW / n;
-        const barW = Math.min(36, Math.max(8, slot * 0.58));
+        const nKeys = Math.max(1, keys.length);
+        const groupW = Math.min(42, Math.max(10, slot * 0.72));
+        const gap = 1.2;
+        const barW = Math.max(3, (groupW - gap * (nKeys - 1)) / nKeys);
         const grid = [1, 0.5, 0].map((t, i) => {
           const y = T + plotH * (1 - t);
           const left = fmt(Math.round(yMax * t));
@@ -788,13 +768,13 @@
         const pts = Object.fromEntries(lines.map((k) => [k, []]));
         rows.forEach((row, i) => {
           const cx = L + slot * i + slot / 2;
-          const x = cx - barW / 2;
-          let y = T + plotH;
-          keys.forEach((k) => {
+          const start = cx - (nKeys * barW + (nKeys - 1) * gap) / 2;
+          keys.forEach((k, ki) => {
             const h = ((row.stack[k] || 0) / yMax) * plotH;
             if (h < 0.6) return;
-            y -= h;
-            bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${colors[k]}"/>`;
+            const x = start + ki * (barW + gap);
+            const y = T + plotH - h;
+            bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="${colors[k]}"/>`;
           });
           labels += `<text x="${cx.toFixed(1)}" y="${height - 8}" font-size="9" fill="#8a90a0" text-anchor="middle" font-family="Arial, sans-serif">${row.label}</text>`;
           lines.forEach((k) => {
@@ -808,239 +788,30 @@
         return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="display:block;max-width:100%;height:auto">${grid}${bars}${polylines}${labels}</svg>`;
       }
 
-      function parseA1(ref) {
-        const m = String(ref).match(/^([A-Z]+)(\d+)$/i);
-        if (!m) return null;
-        let col = 0;
-        for (const ch of m[1].toUpperCase()) col = col * 26 + (ch.charCodeAt(0) - 64);
-        return { r: Number(m[2]) - 1, c: col - 1 };
-      }
-      function childrenOf(levels, i) {
-        const limit = levels[i] || 0;
-        const kids = [];
-        for (let j = i + 1; j < levels.length; j++) {
-          if ((levels[j] || 0) <= limit) break;
-          kids.push(j);
-        }
-        return kids;
-      }
-      function parentOf(levels, i, min) {
-        const limit = levels[i] || 0;
-        for (let j = i - 1; j >= min; j--) {
-          if ((levels[j] || 0) < limit) return j;
-        }
-        return -1;
-      }
-      function visibleList(levels, collapsed, locked, length) {
-        const out = [];
-        for (let i = 0; i < length; i++) {
-          if (i < locked) { out.push(i); continue; }
-          let hide = false;
-          let p = parentOf(levels, i, locked);
-          while (p >= 0) {
-            if (collapsed.has(p)) { hide = true; break; }
-            p = parentOf(levels, p, locked);
-          }
-          if (!hide) out.push(i);
-        }
-        return out;
-      }
-      function collapseTo(levels, locked, k) {
-        const collapsed = new Set();
-        levels.forEach((_, i) => {
-          if (i >= locked && childrenOf(levels, i).length && (levels[i] || 0) >= k - 1) collapsed.add(i);
-        });
-        return collapsed;
-      }
       function renderWbsPdf() {
         const target = document.getElementById("pdf-wbs");
-        const sheets = (wbsData?.sheets || []).filter((s) => s.name !== "-");
+        const sheets = (wbsData?.sheets || []).filter((sheet) => sheet.table);
         if (!sheets.length) {
-          target.innerHTML = `<section class="pdf-page"><h1>WBS</h1><p class="pdf-sub">WBS 데이터를 불러오지 못했습니다.</p></section>`;
+          target.innerHTML = `<section class="pdf-page"><h1>WBS</h1><p class="pdf-sub">구글 시트 게시본을 불러오지 못했습니다.</p></section>`;
           return;
         }
-        const order = ["WBS", "Content", "유지보수"];
-        const sorted = [...sheets].sort((a, b) => {
-          const ai = order.indexOf(a.name);
-          const bi = order.indexOf(b.name);
-          return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
-        });
-        target.innerHTML = sorted.map((sheet) =>
-          `<section class="pdf-page pdf-wbs-page">${sheetHtml(sheet)}</section>`
-        ).join("");
-      }
-      function sheetHtml(sheet) {
         const esc = (value) => String(value).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
-        const parsed = sheet.freeze && parseA1(sheet.freeze);
-        const isTable = !parsed;
-        if (isTable) {
-          let used = 0;
-          for (const row of sheet.rows || []) {
-            for (let c = 0; c < (row?.length || 0); c++) {
-              if (row[c]?.v != null && String(row[c].v).trim()) used = Math.max(used, c + 1);
-            }
-          }
-          used = Math.max(used, 1);
-          const headers = [];
-          let body = "";
-          for (let r = 0; r < sheet.maxRow; r++) {
-            const cells = sheet.rows[r] || [];
-            const vals = Array.from({ length: used }, (_, c) => cells[c]?.v == null ? "" : String(cells[c].v));
-            const filled = vals.map((v) => v.trim()).filter(Boolean);
-            if (!filled.length) continue;
-            if (filled.length === 1 && /^\d+$/.test(filled[0]) && !vals.slice(1).some((v) => v.trim())) continue;
-            const first = vals[0].trim();
-            const section = first && !/^no\.?$/i.test(first) && !/^\d+$/.test(first) && vals.slice(1).every((v) => !v.trim());
-            if (section) {
-              body += `<tr class="sec"><td colspan="${used}">${esc(first)}</td></tr>`;
-              continue;
-            }
-            const isHead = /^no\.?$/i.test(first);
-            if (isHead) headers.splice(0, headers.length, ...vals);
-            const tag = isHead ? "th" : "td";
-            body += `<tr>${vals.map((v, i) => {
-              const h = headers[i] || "";
-              const cls = /주요|변경사항/.test(h) || i === 3 ? "change" : /비고/.test(h) || i === 6 ? "note" : "";
-              return `<${tag}${cls ? ` class="${cls}"` : ""}>${esc(v)}</${tag}>`;
-            }).join("")}</tr>`;
-          }
-          return `<h1>${esc(sheet.name)}</h1><p class="pdf-sub">배포·변경 이력</p><table class="wbs-table">${body}</table>`;
-        }
-        const rowL = (sheet.outline?.rows || []).map((item) => item.level || 0);
-        const colL = (sheet.outline?.cols || []).map((item) => item.level || 0);
-        const freeze = parsed;
-        const headRows = freeze.r || 3;
-        const freezeCol = freeze.c;
-        const rowItems = sheet.outline?.rows || [];
-        const colItems = sheet.outline?.cols || [];
-        function outlineGroups(levels, summaryAfter) {
-          const groups = [];
-          const maxL = levels.length ? Math.max(0, ...levels) : 0;
-          for (let L = 1; L <= maxL; L++) {
-            let i = 0;
-            while (i < levels.length) {
-              if ((levels[i] || 0) < L) { i++; continue; }
-              const start = i;
-              while (i < levels.length && (levels[i] || 0) >= L) i++;
-              const end = i - 1;
-              const summary = summaryAfter ? end + 1 : start - 1;
-              if (summary >= 0 && summary < levels.length && (levels[summary] || 0) < L) {
-                groups.push({ id: `${L}:${start}:${end}`, summary, start, end });
-              }
-            }
-          }
-          return groups;
-        }
-        function hideByGroups(groups, collapsedIds, length, locked) {
-          const hide = new Set();
-          for (const g of groups) {
-            if (!collapsedIds.has(g.id)) continue;
-            for (let i = g.start; i <= g.end; i++) if (i >= locked) hide.add(i);
-          }
-          const out = [];
-          for (let i = 0; i < length; i++) if (i < locked || !hide.has(i)) out.push(i);
-          return out;
-        }
-        const rowGroups = outlineGroups(rowL, !!sheet.outline?.summaryBelow);
-        const colGroups = outlineGroups(colL, !!sheet.outline?.summaryRight);
-        const collapsedRows = new Set(rowGroups.filter((g) => rowItems[g.summary]?.collapsed).map((g) => g.id));
-        const collapsedCols = new Set(colGroups.filter((g) => colItems[g.summary]?.collapsed).map((g) => g.id));
-        const visRows = hideByGroups(rowGroups, collapsedRows, sheet.maxRow, headRows);
-        let visCols = hideByGroups(colGroups, collapsedCols, sheet.maxCol, 0);
-        const ganttAll = visCols.filter((c) => c >= freezeCol);
-        if (ganttAll.length > 48) {
-          visCols = [...visCols.filter((c) => c < freezeCol), ...ganttAll.slice(-48)];
-        }
-        const dayRow = Math.max(headRows - 1, 0);
-        const holidays = new Set();
-        for (let c = freezeCol; c < sheet.maxCol; c++) {
-          const v = sheet.rows[dayRow]?.[c]?.v;
-          if (typeof v === "string" && /^\s+\d+/.test(v)) holidays.add(c);
-        }
-        const colPos = new Map(visCols.map((c, i) => [c, i]));
-        const boxes = [];
-        for (const raw of sheet.merges || []) {
-          const [a, b] = String(raw).split(":");
-          const s = parseA1(a);
-          const e = parseA1(b || a);
-          if (!s || !e) continue;
-          boxes.push({ r1: s.r, c1: s.c, r2: Math.min(e.r, sheet.maxRow - 1), c2: Math.min(e.c, sheet.maxCol - 1) });
-        }
-        const skip = new Set();
-        const span = new Map();
-        for (const box of boxes) {
-          const rows = visRows.filter((r) => r >= box.r1 && r <= box.r2);
-          const cols = visCols.filter((c) => c >= box.c1 && c <= box.c2);
-          if (!rows.length || !cols.length) continue;
-          span.set(`${rows[0]}:${cols[0]}`, { rs: rows.length, cs: cols.length, srcR: box.r1, srcC: box.c1 });
-          for (const r of rows) for (const c of cols) {
-            if (r !== rows[0] || c !== cols[0]) skip.add(`${r}:${c}`);
-          }
-        }
-        const HEAD = 26, ROW = 22, GUTTER = 8;
-        const leftW = (i) => [78, 100, 168, 44, 34][i] || 48;
-        const ganttVisible = visCols.filter((c) => c >= freezeCol).length;
-        const leftCss = Array.from({ length: freezeCol }, (_, i) => `${leftW(i)}px`).join(" ");
-        const colsCss = `${GUTTER}px ${leftCss} repeat(${Math.max(ganttVisible, 1)}, minmax(14px, 1fr))`;
-        const rowsCss = `repeat(${headRows}, ${HEAD}px) repeat(${Math.max(visRows.length - headRows, 0)}, ${ROW}px)`;
-        const parts = [`<div class="wbs-fit"><div class="grid" style="grid-template-columns:${colsCss};grid-template-rows:${rowsCss};width:100%">`];
-        visRows.forEach((r, vr) => {
-          parts.push(`<div class="cell" style="grid-column:1;grid-row:${vr + 1};background:#f7f8f9"></div>`);
-          visCols.forEach((c) => {
-            if (skip.has(`${r}:${c}`)) return;
-            const sp = span.get(`${r}:${c}`) || { rs: 1, cs: 1, srcR: r, srcC: c };
-            const cell = sheet.rows[sp.srcR]?.[sp.srcC] || sheet.rows[r]?.[c] || {};
-            const isHead = r < headRows;
-            const gantt = !isHead && freezeCol < sheet.maxCol && c >= freezeCol;
-            // 휴일 회색은 일자 행·본문만 (월/주차 헤더는 제외)
-            const holiday = holidays.has(c) && (r === dayRow || r >= headRows);
-            const fill = cell.fill;
-            const status = gantt ? String(sheet.rows[sp.srcR]?.[Math.max(freezeCol - 1, 0)]?.v ?? "").trim() : "";
-            const marker = String(cell.v ?? "").trim();
-            let mark = null;
-            if (gantt && marker === "*") mark = { cls: "bar-plan", bg: "#fce5cd" };
-            else if (gantt && (marker === "-" || marker === "–")) {
-              if (status.includes("»")) mark = { cls: "bar-ing", bg: "#fff2cc" };
-              else if (status.includes("❙") || status.includes("❚") || status.includes("✕") || status.includes("×")) mark = { cls: "bar-wait", bg: "#f4cccc" };
-              else mark = { cls: "bar-done", bg: "#d9ead3" };
-            }
-            let bg = fill;
-            let color = cell.color;
-            if (isHead && !bg) bg = c < freezeCol ? "#3d85c6" : "#f3f5f7";
-            if (isHead && fill && String(fill).toUpperCase() === "#666666") color = "#fff";
-            if (isHead && !color) color = c < freezeCol || (bg && String(bg).toUpperCase() === "#3D85C6") ? "#fff" : "#5b6166";
-            if (gantt && mark) bg = mark.bg;
-            else if (gantt && (!fill || String(fill).toUpperCase() === "#FFFFFF")) bg = holiday ? "#efefef" : "#fff";
-            if (holiday && !mark) bg = "#efefef";
-            if (holiday && r === dayRow) color = cell.color || "#c62828";
-            const gc = colPos.get(c) + 2;
-            const stl = [
-              `grid-column:${gc} / span ${sp.cs}`,
-              `grid-row:${vr + 1} / span ${sp.rs}`,
-              bg ? `background:${bg}` : "",
-              color && !gantt ? `color:${color}` : "",
-              cell.b ? "font-weight:700" : "",
-              cell.h === "center" || isHead || gantt ? "justify-content:center;text-align:center" : "",
-            ].filter(Boolean).join(";");
-            let text = (gantt && mark) || cell.v == null ? "" : esc(cell.v);
-            if (isHead && c >= freezeCol && cell.v != null) text = esc(String(cell.v).trim());
-            const cls = ["cell", isHead ? "head" : "", mark ? mark.cls : "", holiday ? "holiday" : ""].filter(Boolean).join(" ");
-            parts.push(`<div class="${cls}" style="${stl}">${text}</div>`);
-          });
-        });
-        parts.push("</div></div>");
-        const title = sheet.name === "WBS" ? "WBS 전체" : sheet.name;
-        return `<h1>${esc(title)}</h1><p class="pdf-sub">엑셀 기본 접힘 반영 · 최근 일정</p>${parts.join("")}`;
+        target.innerHTML = sheets.map((sheet, i) => {
+          const title = sheet.name === "WBS" ? "WBS 전체" : sheet.name;
+          return `<section class="pdf-page pdf-wbs-page"><h1>${esc(title)}</h1><p class="pdf-sub">Google Sheets 게시본</p><style>${sheet.css || ""}</style><div class="ritz wbs-fit wbs-g${i}">${sheet.table}</div></section>`;
+        }).join("");
       }
       function fitWbs() {
-        // 가로 100% 그리드라 별도 scale 불필요. 인쇄 전 레이아웃만 확정.
-        document.querySelectorAll("#pdf-wbs .wbs-fit .grid").forEach((grid) => {
-          grid.style.transform = "none";
-          grid.style.width = "100%";
-        });
         document.querySelectorAll("#pdf-wbs .wbs-fit").forEach((box) => {
-          box.style.width = "100%";
-          box.style.height = "auto";
+          const table = box.querySelector("table");
+          if (!table) return;
+          table.style.transform = "none";
+          const max = box.clientWidth || 1100;
+          const w = table.scrollWidth || table.offsetWidth;
+          const scale = w > max ? max / w : 1;
+          table.style.transformOrigin = "top left";
+          table.style.transform = scale < 0.999 ? `scale(${scale})` : "none";
+          box.style.height = `${Math.ceil((table.scrollHeight || table.offsetHeight) * scale)}px`;
         });
       }
 
@@ -1271,11 +1042,11 @@
           <div class="sub-title">3-3. 서비스 이용자 현황 (${md(from)} ~ ${md(to)})</div>
           <table class="perf"><tr>
             <td class="chart-box">
-              <div class="chart-cap">${grainWeek ? "주간" : "일별"} 인트로 · 시작 · 결과</div>
+              <div class="chart-cap">${grainWeek ? "주간" : "일별"} 인트로 · /play · 결과</div>
               ${svgChart({ rows: svcRows, keys: ["visit", "start", "result"], colors: svcColor })}
               ${legend([
                 { color: svcColor.visit, label: "인트로" },
-                { color: svcColor.start, label: "시작하기" },
+                { color: svcColor.start, label: "/play 진입" },
                 { color: svcColor.result, label: "결과" },
               ])}
             </td>
@@ -1283,8 +1054,8 @@
             <td class="stats">
               <table class="stat-grid">
                 <tr>
-                  ${stat("방문자", fmt(s.visitors), delta(s.visitors, sPrev.visitors), `이벤트 ${fmt(s.events)} · 플레이 ${fmt(s.plays)}`)}
-                  ${stat("결과 화면", fmt(s.results), delta(s.results, sPrev.results), `인트로 ${fmt(s.funnel.visit || 0)} · 시작 ${fmt(s.funnel.start || 0)}`)}
+                  ${stat("브라우저", fmt(s.visitors), delta(s.visitors, sPrev.visitors), `IP ${fmt(s.ips)} · 이벤트 ${fmt(s.events)} · 플레이 ${fmt(s.plays)}`)}
+                  ${stat("결과 화면", fmt(s.results), delta(s.results, sPrev.results), `인트로 ${fmt(s.funnel.visit || 0)} · /play ${fmt(s.funnel.start || 0)}`)}
                 </tr>
               </table>
               ${s.resultRows.length ? `
@@ -1605,7 +1376,7 @@
           fetch(window.TASSI.week(weekId || lastWednesday(kstToday()))).then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch(window.TASSI.api("report")).then((r) => r.json()).catch(() => null),
           fetch(window.TASSI.api("ads")).then((r) => r.json()).catch(() => null),
-          fetch(window.TASSI.api("service")).then((r) => r.json()).catch(() => null),
+          window.TASSI.loadService().catch(() => null),
           fetch(window.TASSI.api("wbs")).then((r) => r.json()).catch(() => ({ sheets: [] })),
         ]);
         weekList = index.weeks || [];

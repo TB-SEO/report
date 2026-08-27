@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { loadReport } from "../web/load-report.js";
 import { loadAdsReport } from "../web/load-ads.js";
 import { loadServiceReport } from "../web/load-service.js";
-import { getAppDocument } from "../lib/app-documents.js";
+import { loadPublishedWbs } from "../web/load-wbs.js";
 import {
   extractDivInner,
   lastWednesday,
@@ -31,7 +31,7 @@ export async function saveWeek(weekId: string, sections?: Record<string, string>
     report: await loadReport(),
     ads: await loadAdsReport(),
     service: await loadServiceReport(),
-    wbs: (await getAppDocument<unknown>("wbs"))?.payload ?? null,
+    wbs: await loadPublishedWbs(true),
   };
   writeWeek(snapshot);
   const apiDir = resolve(publicDir, "api");

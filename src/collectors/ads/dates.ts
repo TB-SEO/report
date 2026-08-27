@@ -21,18 +21,46 @@ export function eachDay(from: string, to: string): string[] {
   return days;
 }
 
-export function emptyMetric() {
-  return { impressions: 0, clicks: 0, cost: 0, ctr: 0, cpc: 0 };
+export type AdsWeek = { id: string; label: string; from: string; to: string };
+
+/** 그달 1일부터 7일씩. 7월 15일 시작이어도 3주차로 잡힌다. */
+export function adsWeeks(from: string, to: string): AdsWeek[] {
+  const weeks: AdsWeek[] = [];
+  const month = Number(from.slice(5, 7));
+  let start = `${from.slice(0, 7)}-01`;
+  let n = 0;
+  while (start <= to) {
+    n += 1;
+    const rawEnd = addKstDays(start, 6);
+    const clipFrom = start < from ? from : start;
+    const clipTo = rawEnd > to ? to : rawEnd;
+    if (clipFrom <= clipTo) {
+      weeks.push({
+        id: `${clipFrom}_${clipTo}`,
+        label: `${month}월 ${n}주차`,
+        from: clipFrom,
+        to: clipTo,
+      });
+    }
+    start = addKstDays(start, 7);
+  }
+  return weeks;
 }
 
-export function sumMetrics<T extends { impressions: number; clicks: number; cost: number }>(rows: T[]) {
+export function emptyMetric() {
+  return { impressions: 0, clicks: 0, cost: 0, ctr: 0, cpc: 0, conversions: 0 };
+}
+
+export function sumMetrics<T extends { impressions: number; clicks: number; cost: number; conversions?: number }>(rows: T[]) {
   const impressions = rows.reduce((sum, row) => sum + (row.impressions || 0), 0);
   const clicks = rows.reduce((sum, row) => sum + (row.clicks || 0), 0);
   const cost = rows.reduce((sum, row) => sum + (row.cost || 0), 0);
+  const conversions = rows.reduce((sum, row) => sum + (row.conversions || 0), 0);
   return {
     impressions,
     clicks,
     cost,
+    conversions,
     ctr: impressions ? (clicks / impressions) * 100 : 0,
     cpc: clicks ? cost / clicks : 0,
   };

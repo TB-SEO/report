@@ -39,6 +39,7 @@ function metricFrom(row: Rec): Metric {
   const impressions = num(pick(row, ["impressions", "impCnt", "imp", "impression", "metrics.impressions"])) ?? 0;
   const clicks = num(pick(row, ["clicks", "clkCnt", "clk", "click", "metrics.clicks"])) ?? 0;
   const cost = num(pick(row, ["cost", "salesAmt", "spend", "costMicros", "metrics.cost_micros", "totalCost"])) ?? 0;
+  const conversions = num(pick(row, ["conversions", "convCnt", "conversion", "metrics.conversions", "총전환수"])) ?? 0;
   const costWon = cost > 10_000_000 ? Math.round(cost / 1_000_000) : cost;
   const ctrRaw = num(pick(row, ["ctr", "clkRt"]));
   const cpcRaw = num(pick(row, ["cpc", "avgCpc", "averageCpc", "metrics.average_cpc"]));
@@ -46,6 +47,7 @@ function metricFrom(row: Rec): Metric {
     impressions,
     clicks,
     cost: costWon,
+    conversions,
     ctr: ctrRaw != null ? (ctrRaw > 1 ? ctrRaw : ctrRaw * 100) : impressions ? (clicks / impressions) * 100 : 0,
     cpc: cpcRaw ?? (clicks ? costWon / clicks : 0),
   };
@@ -163,6 +165,7 @@ function flattenKeywordsFromTables(tables: string[][], platform: Platform): Keyw
       impressions,
       clicks,
       cost: Math.round(clicks * cpc),
+      conversions: 0,
       ctr: num(row[ctrIdx]) ?? (impressions ? (clicks / impressions) * 100 : 0),
       cpc,
     });
@@ -192,6 +195,7 @@ function parsePlatform(platform: Platform, capture: PlatformCapture, range: [str
           impressions: prev.impressions + metric.impressions,
           clicks: prev.clicks + metric.clicks,
           cost: prev.cost + metric.cost,
+          conversions: (prev.conversions || 0) + (metric.conversions || 0),
           ctr: 0,
           cpc: 0,
         });
@@ -253,6 +257,8 @@ type ScrapedMetric = {
   ctr?: number;
   cpc?: number;
   cost?: number;
+  matchType?: string;
+  conversions?: number;
   status?: string;
   bid?: number;
   cells?: string[];
@@ -296,12 +302,12 @@ function scoreCell(cells: string[] | undefined, needle: RegExp) {
   return (cells ?? []).map((cell) => cell.replace(/\s+/g, " ").trim()).find((text) => needle.test(text));
 }
 
-function addKeywordDay(kw: KeywordRow, date: string, impressions: number, clicks: number, cost: number) {
-  if (!impressions && !clicks && !cost) return;
+function addKeywordDay(kw: KeywordRow, date: string, impressions: number, clicks: number, cost: number, conversions = 0) {
+  if (!impressions && !clicks && !cost && !conversions) return;
   const map = kw.byDate ?? (kw.byDate = {});
-  const prev = map[date] ?? [0, 0, 0];
-  const next: DayTuple = [prev[0] + impressions, prev[1] + clicks, prev[2] + cost];
-  if (!next[0] && !next[1] && !next[2]) delete map[date];
+  const prev = map[date] ?? [0, 0, 0, 0];
+  const next: DayTuple = [prev[0] + impressions, prev[1] + clicks, prev[2] + cost, (prev[3] || 0) + conversions];
+  if (!next[0] && !next[1] && !next[2] && !next[3]) delete map[date];
   else map[date] = next;
 }
 
@@ -309,8 +315,8 @@ function mergeByDate(rows: Array<{ byDate?: Record<string, DayTuple> }>): Record
   const map: Record<string, DayTuple> = {};
   for (const row of rows) {
     for (const [date, cell] of Object.entries(row.byDate || {})) {
-      const prev = map[date] ?? [0, 0, 0];
-      map[date] = [prev[0] + cell[0], prev[1] + cell[1], prev[2] + cell[2]];
+      const prev = map[date] ?? [0, 0, 0, 0];
+      map[date] = [prev[0] + cell[0], prev[1] + cell[1], prev[2] + cell[2], (prev[3] || 0) + (cell[3] || 0)];
     }
   }
   return Object.keys(map).length ? map : undefined;
@@ -416,6 +422,7 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
         let dayImp = 0;
         let dayClk = 0;
         let dayCost = 0;
+        let dayConv = 0;
         for (const row of rows) {
           const cells = row.cells ?? [];
           if (cells.includes("노출수") || cells.includes("키워드") && cells.includes("클릭수")) continue;
@@ -425,6 +432,7 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
           const clicks = num(cells[idx("클릭수")]) ?? row.clicks ?? 0;
           const cpc = num(cells[idx("평균 CPC")]) ?? row.cpc ?? 0;
           const cost = num(cells[idx("총비용")]) ?? row.cost ?? Math.round(clicks * cpc);
+          const conversions = num(cells[idx("총전환수")]) ?? num(cells[idx("전환수")]) ?? row.conversions ?? 0;
           const status = (idx("상태") >= 0 ? cells[idx("상태")] : "") || row.status;
           const prev = byName.get(name) ?? {
             id: `${group.id}-${name}`,
@@ -434,6 +442,7 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
             impressions: 0,
             clicks: 0,
             cost: 0,
+            conversions: 0,
             ctr: 0,
             cpc: 0,
           };
@@ -441,18 +450,21 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
           prev.impressions += impressions;
           prev.clicks += clicks;
           prev.cost += cost;
-          addKeywordDay(prev, date, impressions, clicks, cost);
+          prev.conversions = (prev.conversions || 0) + conversions;
+          addKeywordDay(prev, date, impressions, clicks, cost, conversions);
           attachScores(prev, row);
           byName.set(name, prev);
           dayImp += impressions;
           dayClk += clicks;
           dayCost += cost;
+          dayConv += conversions;
         }
         const cur = dayMap.get(date) ?? emptyMetric();
         dayMap.set(date, {
           impressions: cur.impressions + dayImp,
           clicks: cur.clicks + dayClk,
           cost: cur.cost + dayCost,
+          conversions: (cur.conversions || 0) + dayConv,
           ctr: 0,
           cpc: 0,
         });
@@ -529,34 +541,34 @@ function parseGoogleByDate(
   const skippedCopies: string[] = [];
   for (const date of keys) {
     if (date < range[0] || date > range[1]) continue;
-    const fp = googleDayFingerprint(byDate[date] ?? []);
-    if (seen.has(fp)) {
+    const rows = byDate[date] ?? [];
+    const fp = googleDayFingerprint(rows);
+    const hasMetrics = rows.some(
+      (row) => (row.impressions || 0) + (row.clicks || 0) + (row.cost || 0) + (row.conversions || 0) > 0,
+    );
+    if (hasMetrics && seen.has(fp)) {
       skippedCopies.push(date);
       continue;
     }
-    seen.add(fp);
+    if (hasMetrics) seen.add(fp);
     let dayImp = 0;
     let dayClk = 0;
     let dayCost = 0;
-    for (const row of byDate[date] ?? []) {
+    let dayConv = 0;
+    for (const row of rows) {
       const headers = row.headers?.length ? row.headers : [];
       const cells = row.cells ?? [];
-      const name = headers.length
-        ? googleCell(headers, cells, /^키워드$/, /keyword/i)
-        : nameFromRow(row) || row.name || "";
+      const name = row.name || nameFromRow(row) || (headers.length ? googleCell(headers, cells, /^키워드$/, /keyword/i) : "");
       if (skipName(name) || !name) continue;
-      const campName = headers.length
-        ? googleCell(headers, cells, /^캠페인$/, /campaign/i)
-        : row.campaign || "";
-      const groupName = headers.length
-        ? googleCell(headers, cells, /^광고그룹$/, /adgroup/i, /ad group/i)
-        : row.group || "";
-      const matchType = headers.length ? googleCell(headers, cells, /검색유형/, /match/i) : "";
+      const campName = row.campaign || (headers.length ? googleCell(headers, cells, /^캠페인$/, /campaign/i) : "");
+      const groupName = row.group || (headers.length ? googleCell(headers, cells, /^광고그룹$/, /adgroup/i, /ad group/i) : "");
+      const matchType = row.matchType || (headers.length ? googleCell(headers, cells, /검색유형/, /match/i) : "");
       const campaign = campName && !skipName(campName) ? campName : "Google Ads";
       const groupLabel = groupName && !skipName(groupName) ? groupName : "광고그룹";
-      const impressions = headers.length ? (num(googleCell(headers, cells, /^노출수$/, /impressions/i)) ?? row.impressions ?? 0) : (row.impressions || 0);
-      const clicks = headers.length ? (num(googleCell(headers, cells, /^클릭수$/, /^clicks$/i)) ?? row.clicks ?? 0) : (row.clicks || 0);
-      const cost = headers.length ? (num(googleCell(headers, cells, /^비용$/, /^cost$/i)) ?? row.cost ?? 0) : (row.cost || 0);
+      const impressions = row.impressions || (headers.length ? num(googleCell(headers, cells, /^노출수$/, /impressions/i)) : 0) || 0;
+      const clicks = row.clicks || (headers.length ? num(googleCell(headers, cells, /^클릭수$/, /^clicks$/i)) : 0) || 0;
+      const cost = row.cost || (headers.length ? num(googleCell(headers, cells, /^비용$/, /^cost$/i)) : 0) || 0;
+      const conversions = row.conversions || (headers.length ? num(googleCell(headers, cells, /^전환수$/)) : 0) || 0;
       const camp = campMap.get(campaign) ?? {
         id: `google-${campaign}`,
         platform: "GOOGLE",
@@ -565,32 +577,36 @@ function parseGoogleByDate(
         impressions: 0,
         clicks: 0,
         cost: 0,
+        conversions: 0,
         ctr: 0,
         cpc: 0,
       };
       let group = camp.groups.find((g) => g.name === groupLabel);
       if (!group) {
-        group = { id: `${camp.id}-${groupLabel}`, name: groupLabel, keywords: [], impressions: 0, clicks: 0, cost: 0, ctr: 0, cpc: 0 };
+        group = { id: `${camp.id}-${groupLabel}`, name: groupLabel, keywords: [], impressions: 0, clicks: 0, cost: 0, conversions: 0, ctr: 0, cpc: 0 };
         camp.groups.push(group);
       }
       let kw = group.keywords.find((k) => k.name === name && (k.matchType || "") === (matchType || ""));
       if (!kw) {
-        kw = { id: `${group.id}-${name}-${matchType}`, name, matchType: matchType || undefined, status: row.status, impressions: 0, clicks: 0, cost: 0, ctr: 0, cpc: 0 };
+        kw = { id: `${group.id}-${name}-${matchType}`, name, matchType: matchType || undefined, status: row.status, impressions: 0, clicks: 0, cost: 0, conversions: 0, ctr: 0, cpc: 0 };
         group.keywords.push(kw);
       }
       kw.impressions += impressions;
       kw.clicks += clicks;
       kw.cost += cost;
-      addKeywordDay(kw, date, impressions, clicks, cost);
+      kw.conversions = (kw.conversions || 0) + conversions;
+      addKeywordDay(kw, date, impressions, clicks, cost, conversions);
       dayImp += impressions;
       dayClk += clicks;
       dayCost += cost;
+      dayConv += conversions;
       campMap.set(campaign, camp);
     }
     dayMap.set(date, {
       impressions: dayImp,
       clicks: dayClk,
       cost: dayCost,
+      conversions: dayConv,
       ctr: dayImp ? (dayClk / dayImp) * 100 : 0,
       cpc: dayClk ? dayCost / dayClk : 0,
     });

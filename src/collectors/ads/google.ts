@@ -1,23 +1,20 @@
 import type { BrowserContext } from "playwright";
+import { resolve } from "node:path";
 import { eachDay } from "./dates.js";
-import { colIndex, numCell, openFreshPage, readGrid, setGoogleSameDay } from "./scrape.js";
+import { parseGoogleKeywordCsv } from "./excel.js";
+import { ensureDir, root } from "./chrome.js";
+import { clickGoogleKeywordDownload, openFreshPage, setGoogleSameDay, sleep } from "./scrape.js";
 import type { PlatformCapture } from "./types.js";
 
 const KEYWORDS =
   process.env.GOOGLE_ADS_KEYWORDS_URL?.trim() ||
   "https://ads.google.com/aw/keywords?ocid=318165752&workspaceId=0&authuser=0";
 
-function stripHeader(text: string) {
-  return text.replace(/help_outline|정보/gi, "").replace(/\s+/g, " ").trim();
-}
-
-function gridFingerprint(rows: unknown[]) {
-  return JSON.stringify(
-    rows.map((row) => {
-      const rec = row as { cells?: string[]; name?: string; impressions?: number; clicks?: number; cost?: number };
-      return rec.cells?.length ? rec.cells : [rec.name, rec.impressions, rec.clicks, rec.cost];
-    }),
-  );
+export function mergeGoogleByDate(
+  prev: Record<string, unknown[]> | undefined,
+  next: Record<string, unknown[]>,
+) {
+  return { ...(prev ?? {}), ...next };
 }
 
 export async function crawlGoogleAds(
@@ -27,13 +24,10 @@ export async function crawlGoogleAds(
 ): Promise<PlatformCapture> {
   const notes: string[] = [];
   const byDate: Record<string, unknown[]> = {};
+  const csvDir = resolve(root, "data/ads-raw/google-csv");
+  ensureDir(csvDir);
 
-  const existing = context.pages().find((p) => /ads\.google\.com\/aw/i.test(p.url()));
-  const page = existing ?? (await openFreshPage(context, KEYWORDS));
-  if (existing) {
-    await existing.bringToFront().catch(() => undefined);
-    console.log(`구글은 열린 탭을 씁니다 ${existing.url()}`);
-  }
+  const page = await openFreshPage(context, KEYWORDS);
   if (!page) {
     notes.push("구글 키워드 탭을 열지 못했습니다.");
     return {
@@ -46,7 +40,6 @@ export async function crawlGoogleAds(
   }
   notes.push(`키워드 목록 ${page.url()}`);
   let saved = 0;
-  let skippedCopy = 0;
   let failed = 0;
 
   for (const date of eachDay(...dateRange)) {
@@ -59,59 +52,54 @@ export async function crawlGoogleAds(
       failed += 1;
       continue;
     }
-    const grid = await readGrid(page);
-    grid.headers = grid.headers.map(stripHeader);
-    if (!grid.headers.some((header) => /키워드/.test(header))) {
+    await sleep(1200);
+    const file = resolve(csvDir, `${date}.csv`);
+    try {
+      await clickGoogleKeywordDownload(page, file);
+      const parsed = parseGoogleKeywordCsv(file);
+      if (!parsed.headers.some((header) => /키워드/.test(header))) {
+        throw new Error("검색 키워드 보고서 헤더가 없습니다");
+      }
+      const next = parsed.rows.map((row) => ({
+        name: row.name,
+        matchType: row.matchType,
+        campaign: row.campaign,
+        group: row.group,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr: row.ctr,
+        cpc: row.cpc,
+        cost: row.cost,
+        conversions: row.conversions,
+        status: row.status || row.keywordStatus,
+        headers: parsed.headers,
+        cells: [
+          row.name,
+          row.matchType,
+          row.campaign,
+          row.group,
+          String(row.impressions),
+          String(row.clicks),
+          String(row.cost),
+          String(row.conversions),
+        ],
+      }));
+      byDate[date] = next;
+      saved += 1;
+      const imp = parsed.rows.reduce((sum, row) => sum + row.impressions, 0);
+      const clk = parsed.rows.reduce((sum, row) => sum + row.clicks, 0);
+      const conv = parsed.rows.reduce((sum, row) => sum + row.conversions, 0);
+      console.log(`구글 ${date} 키워드 ${parsed.rows.length} 노출 ${imp} 클릭 ${clk} 전환 ${conv}`);
+      onByDate?.(byDate, notes);
+    } catch (error) {
       failed += 1;
-      console.log(`구글 ${date} 키워드 표가 아니라 건너뜁니다`);
-      await page.keyboard.press("Escape").catch(() => undefined);
-      continue;
+      const message = error instanceof Error ? error.message : String(error);
+      notes.push(`${date} 구글 다운로드 실패: ${message}`);
+      console.log(`구글 ${date} 실패 — ${message}`);
     }
-    const nameIdx = colIndex(grid.headers, /^키워드$/, /keyword/i);
-    const typeIdx = colIndex(grid.headers, /검색유형/, /match/i);
-    const campIdx = colIndex(grid.headers, /^캠페인$/, /campaign/i);
-    const groupIdx = colIndex(grid.headers, /^광고그룹$/, /ad group/i, /adgroup/i);
-    const impIdx = colIndex(grid.headers, /^노출수$/, /impr/i);
-    const clkIdx = colIndex(grid.headers, /^클릭수$/, /^clicks$/i);
-    const ctrIdx = colIndex(grid.headers, /클릭률|^ctr$/i);
-    const cpcIdx = colIndex(grid.headers, /평균cpc|^cpc$/i);
-    const costIdx = colIndex(grid.headers, /^비용$/, /^cost$/i);
-    const statusIdx = colIndex(grid.headers, /^상태$/, /status/i);
-    const sample = grid.rows[0]?.cells || [];
-    const shift = nameIdx >= 0 && !(sample[nameIdx] || "").trim() && (sample[nameIdx + 1] || "").trim() ? 1 : 0;
-    const at = (cells: string[], idx: number) => (idx < 0 ? "" : cells[idx + shift] || "");
-    const next = grid.rows.map((row) => ({
-      name: at(row.cells, nameIdx) || row.cells[0],
-      matchType: at(row.cells, typeIdx),
-      campaign: at(row.cells, campIdx),
-      group: at(row.cells, groupIdx),
-      impressions: numCell(at(row.cells, impIdx)),
-      clicks: numCell(at(row.cells, clkIdx)),
-      ctr: numCell(at(row.cells, ctrIdx)),
-      cpc: numCell(at(row.cells, cpcIdx)),
-      cost: numCell(at(row.cells, costIdx)),
-      status: at(row.cells, statusIdx),
-      cells: row.cells,
-      headers: grid.headers,
-    }));
-    const fp = gridFingerprint(next);
-    const hasMetrics = next.some((row) => (row.impressions || 0) + (row.clicks || 0) + (row.cost || 0) > 0);
-    const copiedFrom = Object.keys(byDate)
-      .sort()
-      .find((other) => other !== date && gridFingerprint(byDate[other] || []) === fp);
-    if (copiedFrom && hasMetrics) {
-      skippedCopy += 1;
-      console.log(`구글 ${date} 표가 ${copiedFrom}와 같아 저장하지 않습니다`);
-      notes.push(`${date} 구글 표가 ${copiedFrom}와 같아 건너뜀`);
-      continue;
-    }
-    byDate[date] = next;
-    saved += 1;
-    console.log(`구글 ${date} 키워드 ${grid.rows.length}행`);
-    onByDate?.(byDate, notes);
   }
 
-  notes.push(`구글 저장 ${saved}일, 날짜실패 ${failed}일, 복사 건너뜀 ${skippedCopy}일`);
+  notes.push(`구글 저장 ${saved}일, 실패 ${failed}일`);
 
   return {
     pageUrl: KEYWORDS,

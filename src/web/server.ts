@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { loadReport } from "./load-report.js";
 import { adsPayload } from "./load-ads.js";
-import { getAppDocument } from "../lib/app-documents.js";
+import { loadPublishedWbs } from "./load-wbs.js";
 import { loadServiceReport } from "./load-service.js";
 import { listWeeks, readWeek, weekRange } from "./weeks-store.js";
 import { saveWeek } from "../scripts/save-week.js";
@@ -49,12 +49,11 @@ const server = createServer((req, res) => {
         return;
       }
       if (url === "/api/wbs") {
-        const stored = await getAppDocument<unknown>("wbs");
-        if (!stored) {
-          sendJson(404, { error: "WBS가 아직 없습니다. npm run db:sync 를 실행하세요." });
-          return;
-        }
-        sendJson(200, stored.payload);
+        sendJson(200, await loadPublishedWbs());
+        return;
+      }
+      if (url === "/api/service") {
+        sendJson(200, await loadServiceReport());
         return;
       }
       if (url === "/api/weeks") {
@@ -100,13 +99,7 @@ const server = createServer((req, res) => {
                     ? "service.html"
                     : url.slice(1);
       if (file.endsWith("wbs-data.json")) {
-        const stored = await getAppDocument<unknown>("wbs");
-        if (!stored) {
-          res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-          res.end("not found");
-          return;
-        }
-        sendJson(200, stored.payload);
+        sendJson(200, await loadPublishedWbs());
         return;
       }
       const body = readFileSync(resolve(publicDir, file));

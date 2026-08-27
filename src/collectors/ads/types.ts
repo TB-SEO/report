@@ -6,6 +6,7 @@ export type Metric = {
   cost: number;
   ctr: number;
   cpc: number;
+  conversions: number;
 };
 
 export type DailyPoint = {
@@ -14,8 +15,8 @@ export type DailyPoint = {
   google: Metric;
 };
 
-/** 노출, 클릭, 비용. 0인 날은 넣지 않음. */
-export type DayTuple = [number, number, number];
+/** 노출, 클릭, 비용, 총 전환수. 0인 날은 넣지 않음. */
+export type DayTuple = [number, number, number, number?];
 
 export type KeywordRow = {
   id: string;

@@ -682,7 +682,7 @@ model BlogDemographicDaily {
 // 셋업 테스트 행: visitor_id 00000000-0000-4000-8000-000000000000, 경로 /setup-check
 // ---------------------------------------------------------------------------
 
-/// 사람 1명 = 1행. 브라우저 localStorage visitor_id. 같은 폰/PC면 재방문해도 동일.
+/// 브라우저 1개 = 1행. localStorage visitor_id (오리진마다 다름). IP는 PK가 아님.
 model ShiptypeAnalyticsVisitor {
   id                 String   @id @db.Uuid
   firstSeenAt        DateTime @map("first_seen_at") @db.Timestamptz
@@ -700,6 +700,8 @@ model ShiptypeAnalyticsVisitor {
   lastUtmContent     String?  @map("last_utm_content")
   lastUtmTerm        String?  @map("last_utm_term")
   eventCount         Int      @default(0) @map("event_count")
+  firstIp            String?  @map("first_ip")
+  lastIp             String?  @map("last_ip")
 
   events ShiptypeAnalyticsEvent[]
 
@@ -723,6 +725,7 @@ model ShiptypeAnalyticsEvent {
   utmTerm     String?  @map("utm_term")
   properties  Json     @default("{}")
   occurredAt  DateTime @map("occurred_at") @db.Timestamptz
+  clientIp    String?  @map("client_ip")
 
   visitor ShiptypeAnalyticsVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
 

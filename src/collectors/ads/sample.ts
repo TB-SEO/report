@@ -9,6 +9,7 @@ function m(impressions: number, clicks: number, cpc: number): Metric {
     cost,
     ctr: impressions ? (clicks / impressions) * 100 : 0,
     cpc,
+    conversions: 0,
   };
 }
 

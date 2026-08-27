@@ -102,8 +102,16 @@
         cursor: pointer;
       }
       .col.on { box-shadow: inset 0 -2px 0 var(--fg); }
-      .track { width: 14px; height: 180px; display: flex; flex-direction: column; justify-content: flex-end; }
-      .seg { width: 100%; min-height: 1px; }
+      .track {
+        height: 180px;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 2px;
+      }
+      .seg { width: 7px; min-height: 1px; border-radius: 1px 1px 0 0; }
+      .col.one .seg { width: 10px; }
       .seg.NAVER { background: var(--naver); }
       .seg.GOOGLE { background: var(--google); }
       .click-svg {
@@ -262,10 +270,18 @@
         if (n <= 0) return 1;
         const pow = Math.pow(10, Math.floor(Math.log10(n)));
         const d = n / pow;
-        const nice = d <= 1 ? 1 : d <= 2 ? 2 : d <= 5 ? 5 : 10;
-        return nice * pow;
+        const nice = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => d <= s) || 10;
+        const v = nice * pow;
+        return v >= 10 ? Math.round(v) : Math.round(v * 100) / 100;
       }
-      function currentPeriodKey() { return periodKey(kstToday()); }
+      function dataEnd() {
+        const rangeEnd = report?.dateRange?.[1];
+        const lastDay = report?.days?.length ? report.days[report.days.length - 1].date : "";
+        const end = [rangeEnd, lastDay].filter(Boolean).sort().at(-1);
+        const today = kstToday();
+        return end && end < today ? end : today;
+      }
+      function currentPeriodKey() { return periodKey(dataEnd()); }
       function previousPeriodKey(key) {
         if (grain === "month") {
           const [y, m] = key.split("-").map(Number);
@@ -309,16 +325,18 @@
           }));
       }
       function periodMetrics(byDate) {
-        const next = { impressions: 0, clicks: 0, cost: 0, ctr: 0, cpc: 0 };
+        const next = { impressions: 0, clicks: 0, cost: 0, conversions: 0, ctr: 0, cpc: 0 };
         if (!byDate || !selectedKey) return next;
         for (const [date, row] of Object.entries(byDate)) {
           if (periodKey(date) !== selectedKey) continue;
           const imp = Array.isArray(row) ? row[0] : row.impressions;
           const clk = Array.isArray(row) ? row[1] : row.clicks;
           const cost = Array.isArray(row) ? row[2] : row.cost;
+          const conv = Array.isArray(row) ? row[3] : row.conversions;
           next.impressions += imp || 0;
           next.clicks += clk || 0;
           next.cost += cost || 0;
+          next.conversions += conv || 0;
         }
         next.ctr = next.impressions ? (next.clicks / next.impressions) * 100 : 0;
         next.cpc = next.clicks ? next.cost / next.clicks : 0;
@@ -328,10 +346,12 @@
         const impressions = rows.reduce((sum, row) => sum + (row.impressions || 0), 0);
         const clicks = rows.reduce((sum, row) => sum + (row.clicks || 0), 0);
         const cost = rows.reduce((sum, row) => sum + (row.cost || 0), 0);
+        const conversions = rows.reduce((sum, row) => sum + (row.conversions || 0), 0);
         return {
           impressions,
           clicks,
           cost,
+          conversions,
           ctr: impressions ? (clicks / impressions) * 100 : 0,
           cpc: clicks ? cost / clicks : 0,
         };
@@ -359,40 +379,32 @@
           .filter(Boolean);
       }
       function emptyBucket(key) {
-        return { key, impressions: 0, clicks: 0, cost: 0, naver: { impressions: 0, clicks: 0, cost: 0 }, google: { impressions: 0, clicks: 0, cost: 0 } };
+        return { key, impressions: 0, clicks: 0, cost: 0, conversions: 0, naver: { impressions: 0, clicks: 0, cost: 0, conversions: 0 }, google: { impressions: 0, clicks: 0, cost: 0, conversions: 0 } };
       }
       function addDayCell(bucket, plat, cell) {
         const imp = Array.isArray(cell) ? cell[0] : cell.impressions;
         const clk = Array.isArray(cell) ? cell[1] : cell.clicks;
         const cost = Array.isArray(cell) ? cell[2] : cell.cost;
+        const conv = Array.isArray(cell) ? cell[3] : cell.conversions;
         bucket[plat].impressions += imp || 0;
         bucket[plat].clicks += clk || 0;
         bucket[plat].cost += cost || 0;
+        bucket[plat].conversions += conv || 0;
       }
       function buckets() {
         const map = new Map();
         for (const day of report.days || []) {
           const key = periodKey(day.date);
           if (!map.has(key)) map.set(key, emptyBucket(key));
-        }
-        for (const camp of tableCamps()) {
-          const plat = camp.platform === "NAVER" ? "naver" : "google";
-          for (const group of camp.groups || []) {
-            const keywords = group.keywords || [];
-            const fromKw = keywords.some((kw) => kw.byDate && Object.keys(kw.byDate).length);
-            const series = fromKw
-              ? keywords.flatMap((kw) => Object.entries(kw.byDate || {}))
-              : Object.entries(group.byDate || {});
-            for (const [date, cell] of series) {
-              const bucket = map.get(periodKey(date));
-              if (bucket) addDayCell(bucket, plat, cell);
-            }
-          }
+          const bucket = map.get(key);
+          if (current === "ALL" || current === "NAVER") addDayCell(bucket, "naver", day.naver);
+          if (current === "ALL" || current === "GOOGLE") addDayCell(bucket, "google", day.google);
         }
         for (const bucket of map.values()) {
           bucket.impressions = bucket.naver.impressions + bucket.google.impressions;
           bucket.clicks = bucket.naver.clicks + bucket.google.clicks;
           bucket.cost = bucket.naver.cost + bucket.google.cost;
+          bucket.conversions = (bucket.naver.conversions || 0) + (bucket.google.conversions || 0);
         }
         return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
       }
@@ -436,6 +448,7 @@
           ${isKeyword ? `<td class="score">${rel}</td><td class="score">${exp}</td>` : `<td></td><td></td>`}
           <td class="num">${fmt(row.impressions)}</td>
           <td class="num">${fmt(row.clicks)}</td>
+          <td class="num">${fmt(row.conversions || 0)}</td>
           <td class="num">${fmt1(row.ctr)}</td>
           <td class="num">${won(row.cpc)}</td>
           <td class="num">${won(row.cost)}</td>
@@ -465,14 +478,14 @@
         if (!selectedKey || !slots.some((row) => row.key === selectedKey)) selectedKey = (latestData || slots.at(-1)).key;
         const selected = slots.find((row) => row.key === selectedKey) || slots[0];
         const camps = periodCamps();
-        const maxImp = Math.max(1, ...slots.map((row) => row.impressions));
-        const maxClk = Math.max(1, ...slots.map((row) => row.clicks));
+        const plats = current === "ALL" ? ["NAVER", "GOOGLE"] : [current];
+        const ticks = (top) => [top, top / 2, 0].map((t) => (Number.isInteger(t) ? t : Math.round(t * 10) / 10));
+        const maxImp = Math.max(1, ...slots.flatMap((row) => plats.map((p) => row[p === "NAVER" ? "naver" : "google"].impressions)));
+        const maxClk = Math.max(1, ...slots.flatMap((row) => plats.map((p) => row[p === "NAVER" ? "naver" : "google"].clicks)));
         const topImp = niceCeil(maxImp);
         const topClk = niceCeil(maxClk);
-        const yImp = [topImp, topImp / 2, 0].map((t) => (Number.isInteger(t) ? t : Math.round(t * 10) / 10));
-        const yClk = [topClk, topClk / 2, 0].map((t) => (Number.isInteger(t) ? t : Math.round(t * 10) / 10));
-        const stacked = current === "ALL";
-        const plats = stacked ? ["NAVER", "GOOGLE"] : [current];
+        const yImp = ticks(topImp);
+        const yClk = ticks(topClk);
         const canNewer = chartPage > 0;
         const canOlder = chartPage < pageCount - 1;
         const kwCount = camps.reduce((n, c) => n + c.groups.reduce((m, g) => m + g.keywords.length, 0), 0);
@@ -548,11 +561,11 @@
                     const h = Math.round((v / topImp) * 180);
                     return h ? `<div class="seg ${p}" style="height:${h}px"></div>` : "";
                   }).join("");
-                  return `<div class="col ${row.key === selectedKey ? "on" : ""}" data-key="${row.key}" data-label="${periodLabel(row.key)}" data-naver-imp="${row.naver.impressions}" data-naver-clk="${row.naver.clicks}" data-google-imp="${row.google.impressions}" data-google-clk="${row.google.clicks}"><div class="track">${impParts}</div></div>`;
+                  return `<div class="col ${plats.length === 1 ? "one" : ""} ${row.key === selectedKey ? "on" : ""}" data-key="${row.key}" data-label="${periodLabel(row.key)}" data-naver-imp="${row.naver.impressions}" data-naver-clk="${row.naver.clicks}" data-google-imp="${row.google.impressions}" data-google-clk="${row.google.clicks}"><div class="track">${impParts}</div></div>`;
                 }).join("")}
               </div>
               ${clickSvg}
-              <div class="tip" id="chartTip"></div>
+              <div class="tip"></div>
               <div class="axis-row">
                 <button class="pager" id="chartOlder" ${canOlder ? "" : "disabled"} aria-label="이전">‹</button>
                 <div class="axis">${slots.map((row) => `<span class="show vert">${axisText(row.key)}</span>`).join("")}</div>
@@ -571,6 +584,7 @@
                 <th>클릭기대</th>
                 <th class="num">노출수</th>
                 <th class="num">클릭수</th>
+                <th class="num">총 전환수</th>
                 <th class="num">클릭률(%)</th>
                 <th class="num">평균 CPC</th>
                 <th class="num">비용</th>
@@ -586,7 +600,7 @@
           col.onclick = () => { selectedKey = col.dataset.key; render(); };
           col.onmouseenter = () => showChartTip(col);
           col.onmousemove = (event) => moveChartTip(event);
-          col.onmouseleave = () => hideChartTip();
+          col.onmouseleave = () => hideChartTip(col);
         });
         document.querySelectorAll(".toggle").forEach((btn) => {
           btn.onclick = () => {
@@ -597,7 +611,7 @@
         });
       }
       function showChartTip(col) {
-        const tip = document.getElementById("chartTip");
+        const tip = col.closest(".plot-main")?.querySelector(".tip");
         if (!tip) return;
         const platBlock = (id, imp, clk) => `
           <div class="tip-plat">
@@ -614,8 +628,8 @@
         tip.classList.add("on");
       }
       function moveChartTip(event) {
-        const tip = document.getElementById("chartTip");
         const frame = event.currentTarget.closest(".plot-main");
+        const tip = frame?.querySelector(".tip");
         if (!tip || !frame) return;
         const box = frame.getBoundingClientRect();
         const x = event.clientX - box.left + 12;
@@ -625,8 +639,8 @@
         tip.style.left = `${Math.max(8, Math.min(x, maxX))}px`;
         tip.style.top = `${Math.max(8, Math.min(y, maxY))}px`;
       }
-      function hideChartTip() {
-        const tip = document.getElementById("chartTip");
+      function hideChartTip(col) {
+        const tip = (col && col.closest(".plot-main")?.querySelector(".tip")) || document.querySelector(".tip.on");
         if (tip) tip.classList.remove("on");
       }
       function prettyRange(range) {

@@ -7,17 +7,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
     <link rel="stylesheet" href="app.css" />
     <style>
-      :root {
-        --canvas: #ffffff;
-        --text: #424242;
-        --fg: #2f3438;
-        --muted: #828c94;
-        --action: #00a1ff;
-        --hairline: #e0e0e0;
-        --visit: #2d5be3;
-        --start: #00a1ff;
-        --result: #12b886;
-      }
       * { box-sizing: border-box; }
       html, body {
         margin: 0;
@@ -33,10 +22,23 @@
       .kicker { color: var(--muted); font-size: 15px; margin-bottom: 12px; }
       h1 { font-size: 30px; line-height: 30px; font-weight: 400; letter-spacing: -0.3px; margin: 0 0 8px; color: var(--fg); }
       h2 { font-size: 16px; line-height: 24px; font-weight: 700; letter-spacing: -0.3px; margin: 28px 0 12px; color: var(--fg); }
-      .note { color: var(--muted); font-size: 13px; line-height: 20px; margin: 0 0 20px; }
-      .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px; }
-      article .label { color: var(--muted); font-size: 15px; line-height: 15px; }
-      article .value { font-size: 30px; line-height: 30px; font-weight: 400; margin-top: 6px; color: var(--fg); }
+      .note { color: var(--muted); font-size: 13px; line-height: 20px; margin: 0 0 16px; }
+      .units { display: flex; gap: 8px; margin: 0 0 20px; }
+      .units button {
+        font-family: inherit;
+        font-size: 13px;
+        line-height: 18px;
+        padding: 6px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 4px;
+        background: #fff;
+        color: var(--fg);
+        cursor: pointer;
+      }
+      .units button.on { border-color: var(--action); color: var(--action); font-weight: 700; }
+      .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; margin-bottom: 20px; }
+      article .label { color: var(--muted); font-size: 13px; line-height: 15px; }
+      article .value { font-size: 28px; line-height: 30px; font-weight: 400; margin-top: 6px; color: var(--fg); }
       .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; }
       .plot {
         height: 180px;
@@ -59,16 +61,20 @@
       .num { text-align: right; white-space: nowrap; }
       .mono { font-size: 12px; color: var(--muted); word-break: break-all; }
       .empty { color: var(--muted); padding: 24px 0; }
-      @media (max-width: 800px) {
+      @media (max-width: 900px) {
+        .cards, .grid { grid-template-columns: 1fr 1fr; }
+      }
+      @media (max-width: 640px) {
         .cards, .grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <div class="kicker">ShipType 시뮬레이터</div>
+      <div class="kicker">ShipType 시뮬레이터 · <a href="https://shiptype.scoopurl.co.kr/">라이브</a></div>
       <h1>서비스 이용자 현황</h1>
       <p class="note" id="note"></p>
+      <div class="units" id="units"></div>
       <div class="cards" id="cards"></div>
       <h2>일별 이용</h2>
       <div id="chart"></div>
@@ -82,8 +88,12 @@
           <div id="results"></div>
         </div>
       </div>
-      <h2>유입 (첫 UTM)</h2>
+      <h2>유입 (첫 랜딩 · 리퍼러 · UTM)</h2>
       <div id="sources"></div>
+      <h2>브라우저 (visitor_id)</h2>
+      <div id="browsers"></div>
+      <h2>IP 단위</h2>
+      <div id="ips"></div>
       <h2>최근 이벤트</h2>
       <div id="timeline"></div>
     </div>
@@ -92,8 +102,8 @@
     <script>
       const FUNNEL = ["visit", "start", "result", "cta_click", "share", "save_image", "retry"];
       const LABELS = {
-        visit: "인트로",
-        start: "시작하기",
+        visit: "인트로 (/)",
+        start: "/play 진입",
         result: "결과",
         cta_click: "T-ASSI 살펴보기",
         share: "공유",
@@ -103,6 +113,9 @@
       const COLORS = { visit: "#2d5be3", start: "#00a1ff", result: "#12b886", cta_click: "#f86400", share: "#9b59b6", save_image: "#e0972d", retry: "#828c94" };
       const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
       const dash = (v) => (v == null || v === "" ? "—" : v);
+      const shortId = (id) => String(id || "").slice(0, 8);
+      let report = null;
+      let unit = "browser";
 
       function md(ymd) {
         const [, m, d] = (ymd || "").split("-");
@@ -133,18 +146,30 @@
         return `<table><thead><tr>${headers.map((h) => `<th${h.num ? ' class="num"' : ""}>${h.label}</th>`).join("")}</tr></thead>
           <tbody>${rows.map((row) => `<tr>${row.join("")}</tr>`).join("")}</tbody></table>`;
       }
+      function personKey(event) {
+        if (unit === "ip") return event.lastIpMasked || event.clientIpMasked || "";
+        return event.visitorId;
+      }
 
-      function render(report) {
-        document.getElementById("note").textContent = (report.notes || []).join(" ");
+      function render() {
         const events = report.events || [];
         const visitors = report.visitors || [];
-        const plays = new Set(events.map((e) => e.playId).filter(Boolean));
-        const resultsN = events.filter((e) => e.eventName === "result").length;
+        const stats = report.stats || {};
+        document.getElementById("note").textContent = (report.notes || []).join(" ");
+        document.getElementById("units").innerHTML = [
+          ["browser", "집계: 브라우저"],
+          ["ip", "집계: IP"],
+        ].map(([id, label]) => `<button type="button" class="${unit === id ? "on" : ""}" data-unit="${id}">${label}</button>`).join("");
+        document.querySelectorAll("#units button").forEach((btn) => {
+          btn.onclick = () => { unit = btn.dataset.unit; render(); };
+        });
+
         document.getElementById("cards").innerHTML = [
-          ["방문자", visitors.length],
-          ["이벤트", events.length],
-          ["플레이", plays.size],
-          ["결과 화면", resultsN],
+          ["브라우저", stats.browsers ?? visitors.length],
+          ["IP 단위", stats.ips ?? 0],
+          ["플레이", stats.plays ?? 0],
+          ["결과 화면", stats.results ?? 0],
+          ["이벤트", stats.events ?? events.length],
         ].map(([label, value]) => `<article><div class="label">${label}</div><div class="value">${fmt(value)}</div></article>`).join("");
 
         const today = kstToday();
@@ -169,18 +194,19 @@
           }).join("")}</div>
           <div class="axis">${span.map((d) => `<span>${md(d)}</span>`).join("")}</div>
           <div class="legend">
-            <span><i style="background:${COLORS.visit}"></i>인트로</span>
-            <span><i style="background:${COLORS.start}"></i>시작하기</span>
+            <span><i style="background:${COLORS.visit}"></i>인트로 (/)</span>
+            <span><i style="background:${COLORS.start}"></i>/play 진입</span>
             <span><i style="background:${COLORS.result}"></i>결과</span>
           </div>`;
 
         const funnelRows = FUNNEL.map((name) => {
           const list = events.filter((e) => e.eventName === name);
-          const people = new Set(list.map((e) => e.visitorId)).size;
+          const people = new Set(list.map(personKey).filter(Boolean)).size;
           return [name, list.length, people];
         }).filter((row) => row[1] || row[0] === "visit" || row[0] === "start" || row[0] === "result");
+        const peopleLabel = unit === "ip" ? "IP" : "브라우저";
         document.getElementById("funnel").innerHTML = table(
-          [{ label: "단계" }, { label: "횟수", num: true }, { label: "사람", num: true }],
+          [{ label: "단계" }, { label: "횟수", num: true }, { label: peopleLabel, num: true }],
           funnelRows.map(([name, n, people]) => [
             `<td>${LABELS[name] || name}</td>`,
             `<td class="num">${fmt(n)}</td>`,
@@ -204,36 +230,75 @@
 
         const srcMap = new Map();
         for (const v of visitors) {
-          const key = [v.firstUtmSource || "(없음)", v.firstUtmCampaign || "—", v.firstUtmContent || "—"].join("\t");
+          const key = [
+            v.firstLandingPath || "(없음)",
+            v.firstReferrer || "(직접)",
+            v.firstUtmSource || "(UTM 없음)",
+            v.firstUtmCampaign || "—",
+            v.firstUtmContent || "—",
+          ].join("\t");
           srcMap.set(key, (srcMap.get(key) || 0) + 1);
         }
         const srcRows = [...srcMap.entries()].sort((a, b) => b[1] - a[1]);
         document.getElementById("sources").innerHTML = table(
-          [{ label: "source" }, { label: "campaign" }, { label: "content" }, { label: "사람", num: true }],
+          [{ label: "첫 랜딩" }, { label: "첫 리퍼러" }, { label: "source" }, { label: "campaign" }, { label: "content" }, { label: "브라우저", num: true }],
           srcRows.map(([key, n]) => {
-            const [s, c, t] = key.split("\t");
-            return [`<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
+            const [path, ref, s, c, t] = key.split("\t");
+            return [`<td>${path}</td>`, `<td>${ref}</td>`, `<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
           }),
-          "유입 캠페인이 아직 없습니다. 캠페인은 첫 UTM을 씁니다.",
+          "유입 기록이 없습니다.",
+        );
+
+        document.getElementById("browsers").innerHTML = table(
+          [{ label: "visitor" }, { label: "첫 랜딩" }, { label: "첫 리퍼러" }, { label: "IP" }, { label: "이벤트", num: true }, { label: "마지막" }],
+          visitors.map((v) => [
+            `<td class="mono">${shortId(v.id)}</td>`,
+            `<td>${dash(v.firstLandingPath)}</td>`,
+            `<td>${dash(v.firstReferrer)}</td>`,
+            `<td class="mono">${dash(v.lastIpMasked)}</td>`,
+            `<td class="num">${fmt(v.eventCount)}</td>`,
+            `<td>${new Date(v.lastSeenAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
+          ]),
+          "브라우저 방문자가 없습니다.",
+        );
+
+        const ipMap = new Map();
+        for (const v of visitors) {
+          if (!v.lastIpMasked) continue;
+          const cur = ipMap.get(v.lastIpMasked) || { browsers: 0, events: 0 };
+          cur.browsers += 1;
+          cur.events += v.eventCount;
+          ipMap.set(v.lastIpMasked, cur);
+        }
+        const ipRows = [...ipMap.entries()].sort((a, b) => b[1].browsers - a[1].browsers);
+        document.getElementById("ips").innerHTML = table(
+          [{ label: "IP (마스킹)" }, { label: "브라우저", num: true }, { label: "이벤트", num: true }],
+          ipRows.map(([ip, row]) => [
+            `<td class="mono">${ip}</td>`,
+            `<td class="num">${fmt(row.browsers)}</td>`,
+            `<td class="num">${fmt(row.events)}</td>`,
+          ]),
+          "IP가 있는 이벤트가 없습니다. 배포 전·로컬은 비어 있는 것이 정상입니다.",
         );
 
         const recent = events.slice(0, 100);
         document.getElementById("timeline").innerHTML = table(
-          [{ label: "시각" }, { label: "이벤트" }, { label: "결과" }, { label: "visitor" }, { label: "유입" }],
+          [{ label: "시각" }, { label: "이벤트" }, { label: "결과" }, { label: "visitor" }, { label: "play" }, { label: "경로" }, { label: "IP" }],
           recent.map((e) => [
             `<td>${new Date(e.occurredAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
             `<td>${LABELS[e.eventName] || e.eventName}</td>`,
             `<td>${dash(e.resultName)}</td>`,
-            `<td class="mono">${e.visitorId}</td>`,
-            `<td>${dash(e.firstUtmSource || e.utmSource)}${e.firstUtmCampaign ? " · " + e.firstUtmCampaign : ""}</td>`,
+            `<td class="mono">${shortId(e.visitorId)}</td>`,
+            `<td class="mono">${e.playId ? shortId(e.playId) : "—"}</td>`,
+            `<td>${dash(e.landingPath)}</td>`,
+            `<td class="mono">${dash(e.clientIpMasked || e.lastIpMasked)}</td>`,
           ]),
-          "이벤트가 없습니다. 로컬에서 한 판 돌린 뒤 새로고침하세요.",
+          "이벤트가 없습니다.",
         );
       }
 
-      fetch(window.TASSI.api("service"))
-        .then((r) => r.json())
-        .then(render)
+      window.TASSI.loadService()
+        .then((data) => { report = data; render(); })
         .catch((err) => {
           document.getElementById("note").textContent = err.message || "불러오지 못했습니다.";
         });

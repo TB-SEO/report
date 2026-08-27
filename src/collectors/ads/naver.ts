@@ -1,16 +1,21 @@
-import type { BrowserContext } from "playwright";
+import type { BrowserContext, Page } from "playwright";
+import { resolve } from "node:path";
 import { loadNaverCatalog } from "./catalog.js";
-import { eachDay } from "./dates.js";
-import { loadLatestCapture } from "./save.js";
+import { adsWeeks, eachDay, type AdsWeek } from "./dates.js";
+import { checkNaverExcel, excelHasTotalConversions, parseNaverKeywordXlsx, type NaverExcelKeyword } from "./excel.js";
+import { ensureDir, root } from "./chrome.js";
 import {
-  clickNaverAllStatus,
-  colIndex,
-  numCell,
+  clickNaverKeywordDownload,
+  ensureNaverKeywordDownload,
+  ensureNaverTotalConversionsColumn,
+  gotoQuiet,
+  hasNaverGroupTraffic,
+  listNaverCampaignGroups,
+  naverGroupIdFromUrl,
   openFreshPage,
-  readGrid,
   setNaverSameDay,
   sleep,
-  type Grid,
+  type NaverCampaignGroupRow,
 } from "./scrape.js";
 import type { PlatformCapture } from "./types.js";
 
@@ -21,98 +26,200 @@ const CAMPAIGNS =
   process.env.NAVER_SEARCHAD_URL?.trim() ||
   `${BASE}/campaigns-by/WEB_SITE`;
 
-type GroupNode = { id: string; name: string; href: string; keywordsByDate: Record<string, unknown[]> };
+type GroupNode = {
+  id: string;
+  name: string;
+  href: string;
+  keywordsByDate: Record<string, unknown[]>;
+};
 type CampNode = { id: string; name: string; href: string; groups: GroupNode[] };
 
-function cell(grid: Grid, row: Grid["rows"][number], ...needles: RegExp[]) {
-  const idx = colIndex(grid.headers, ...needles);
-  if (idx < 0) return "";
-  return row.cells[idx] ?? "";
-}
-
-function keywordName(grid: Grid, row: Grid["rows"][number]) {
-  const fromHeader = cell(grid, row, /^키워드$/);
-  if (fromHeader) return fromHeader.replace(/\[.*?\]/g, " ").replace(/\s+/g, " ").trim();
-  for (const value of row.cells) {
-    const text = value.replace(/\[.*?\]/g, " ").replace(/\s+/g, " ").trim();
-    if (!text) continue;
-    if (/^(on|off)$/i.test(text)) continue;
-    if (/^[\d.,%원+\-/\s]+$/.test(text)) continue;
-    if (/노출가능|노출제한|검사중|입찰|기본|평균|개선필요|합계|결과|선택/.test(text)) continue;
-    if (/^(키워드|상태|캠페인|광고그룹)$/.test(text)) continue;
-    return text;
-  }
-  return "";
-}
-
-function metrics(grid: Grid, row: Grid["rows"][number]) {
-  const impressions = numCell(cell(grid, row, /노출수|^노출$/));
-  const clicks = numCell(cell(grid, row, /^클릭수$|^클릭$/));
-  const cpc = numCell(cell(grid, row, /평균cpc|평균CPC|cpc/i));
-  const costRaw = numCell(cell(grid, row, /비용|지출|소진/));
+function toScraped(row: NaverExcelKeyword) {
   return {
-    impressions,
-    clicks,
-    ctr: numCell(cell(grid, row, /클릭률|ctr/i)),
-    cpc,
-    cost: costRaw || Math.round(clicks * cpc),
-    status: cell(grid, row, /상태/),
-    bid: numCell(cell(grid, row, /입찰/)),
-    name: keywordName(grid, row),
-    qualityScore: cell(grid, row, /품질지수|품질/),
-    relevanceScore: cell(grid, row, /광고연관|연관지수|연관/),
-    expectedCtr: cell(grid, row, /클릭기대|기대지수|기대/),
-    headers: grid.headers,
+    name: row.name,
+    status: row.status,
+    bid: row.bid,
+    impressions: row.impressions,
+    clicks: row.clicks,
+    conversions: row.conversions,
+    ctr: row.ctr,
+    cpc: row.cpc,
+    cost: row.cost,
+    relevanceScore: row.relevanceScore,
+    expectedCtr: row.expectedCtr,
+    id: row.id,
+    cells: [row.name, row.status, String(row.impressions), String(row.clicks), String(row.cost), String(row.conversions)],
   };
-}
-
-function seedTree(): CampNode[] {
-  const prev = loadLatestCapture()?.naver.networkJson.find((item) => String(item.url).includes("scrape://naver-tree"))?.body;
-  const tree: CampNode[] = [];
-  if (Array.isArray(prev)) {
-    for (const camp of prev as CampNode[]) {
-      tree.push({
-        id: camp.id,
-        name: camp.name,
-        href: camp.href || `${BASE}/campaigns/${camp.id}`,
-        groups: (camp.groups || []).map((group) => ({
-          id: group.id,
-          name: group.name,
-          href: group.href || `${BASE}/adgroups/${group.id}`,
-          keywordsByDate: { ...(group.keywordsByDate || {}) },
-        })),
-      });
-    }
-  }
-  const catalog = loadNaverCatalog();
-  const mo = tree.find((c) => c.id === "cmp-a001-01-000000010974395") || {
-    id: "cmp-a001-01-000000010974395",
-    name: "T-ASSI 파워링크 통합_MO",
-    href: `${BASE}/campaigns/cmp-a001-01-000000010974395`,
-    groups: [],
-  };
-  if (!tree.some((c) => c.id === mo.id)) tree.push(mo);
-  for (const item of catalog.campaigns) {
-    let camp = tree.find((c) => c.id === item.id);
-    if (!camp) {
-      camp = { id: item.id, name: item.name, href: `${BASE}/campaigns/${item.id}`, groups: [] };
-      tree.push(camp);
-    } else if (item.name) camp.name = item.name;
-  }
-  for (const item of catalog.groups) {
-    if (mo.groups.some((g) => g.id === item.id)) continue;
-    mo.groups.push({
-      id: item.id,
-      name: item.name,
-      href: `${BASE}/adgroups/${item.id}`,
-      keywordsByDate: {},
-    });
-  }
-  return tree;
 }
 
 function groupHref(id: string) {
   return `${BASE}/adgroups/${id}`;
+}
+
+function seedTree(): CampNode[] {
+  const catalog = loadNaverCatalog();
+  const want = (process.env.NAVER_ADS_CAMPAIGN_ID || process.env.ADS_CAMPAIGN || "")
+    .split(/[,|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const items = want.length
+    ? catalog.campaigns.filter((item) => want.includes(item.id) || want.includes(item.name))
+    : catalog.campaigns;
+  return items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    href: `${BASE}/campaigns/${item.id}`,
+    groups: [] as GroupNode[],
+  }));
+}
+
+function weekDoneLabel(week: AdsWeek) {
+  const md = (ymd: string) => `${Number(ymd.slice(5, 7))}월 ${Number(ymd.slice(8, 10))}일`;
+  return `${week.label} (${md(week.from)} ~ ${md(week.to)})`;
+}
+
+function upsertGroup(camp: CampNode, row: NaverCampaignGroupRow) {
+  const id = row.id || row.name;
+  let target = camp.groups.find((group) => group.id === id || group.name === row.name);
+  if (!target) {
+    target = {
+      id,
+      name: row.name,
+      href: row.href || (row.id ? groupHref(row.id) : ""),
+      keywordsByDate: {},
+    };
+    camp.groups.push(target);
+  } else {
+    if (row.id) target.id = row.id;
+    if (row.href) target.href = row.href;
+    target.name = row.name;
+  }
+  return target;
+}
+
+async function backToCampaign(page: Page, camp: CampNode) {
+  if (!(await gotoQuiet(page, camp.href))) {
+    await page.goBack({ waitUntil: "domcontentloaded" }).catch(() => undefined);
+    await sleep(1200);
+  }
+}
+
+async function openGroupPage(page: Page, camp: CampNode, target: GroupNode) {
+  const href = target.href || (target.id.startsWith("grp-") ? groupHref(target.id) : "");
+  if (href) {
+    await gotoQuiet(page, href);
+    await sleep(800);
+  }
+  if (!/\/adgroups\//.test(page.url())) {
+    const link = page.locator('a[href*="/adgroups/"]').filter({ hasText: target.name }).first();
+    if ((await link.count()) > 0) {
+      await link.click({ timeout: 5000 });
+      await sleep(1500);
+    }
+  }
+  const id = naverGroupIdFromUrl(page.url());
+  if (id) {
+    target.id = id;
+    target.href = groupHref(id);
+  }
+  if (!/\/adgroups\//.test(page.url())) throw new Error("광고그룹 페이지 이동 실패");
+  await ensureNaverKeywordDownload(page);
+  await ensureNaverTotalConversionsColumn(page);
+}
+
+async function downloadOneDay(page: Page, camp: CampNode, target: GroupNode, date: string, excelDir: string) {
+  await openGroupPage(page, camp, target);
+  if (!(await setNaverSameDay(page, date))) throw new Error("그룹 페이지 날짜지정 실패");
+  await sleep(800);
+  const file = resolve(excelDir, `${camp.id}_${target.id}_${date}.xlsx`);
+  await clickNaverKeywordDownload(page, file);
+  let parsed = parseNaverKeywordXlsx(file);
+  if (!excelHasTotalConversions(parsed)) {
+    await ensureNaverTotalConversionsColumn(page, true);
+    await clickNaverKeywordDownload(page, file);
+    parsed = parseNaverKeywordXlsx(file);
+  }
+  const check = checkNaverExcel(parsed);
+  target.keywordsByDate[date] = parsed.rows.map(toScraped);
+  if (!check.ok) throw new Error(check.issues.join("; "));
+  return check;
+}
+
+async function crawlCampaignWeeks(
+  page: Page,
+  camp: CampNode,
+  weeks: AdsWeek[],
+  excelDir: string,
+  notes: string[],
+  onSave: () => void,
+) {
+  console.log(`캠페인 ${camp.name} 상세에서 일별 그룹 표 → 노출·클릭 있는 그룹만`);
+  for (const week of weeks) {
+    const days = eachDay(week.from, week.to);
+    let fail = 0;
+    let collected = 0;
+    const issues: string[] = [];
+    const label = weekDoneLabel(week);
+    console.log(`${camp.name} ${label} ${days.length}일 수집 시작`);
+    for (const date of days) {
+      await backToCampaign(page, camp);
+      let dateOk = false;
+      for (let attempt = 0; attempt < 2 && !dateOk; attempt++) {
+        dateOk = await setNaverSameDay(page, date);
+      }
+      if (!dateOk) {
+        fail += 1;
+        issues.push(`${date}: 날짜지정 실패`);
+        console.log(`  ${date} 날짜지정 실패`);
+        onSave();
+        continue;
+      }
+      await sleep(2200);
+      const rows = await listNaverCampaignGroups(page);
+      const active = rows.filter(hasNaverGroupTraffic);
+      const skipped = rows.filter((row) => !hasNaverGroupTraffic(row));
+      console.log(
+        `  ${date} 날짜지정 — 그룹 ${rows.length}개 중 실적 있음 ${active.length}개` +
+          (active.length
+            ? ` [${active.map((row) => `${row.name} 노출${row.impressions}/클릭${row.clicks}`).join(", ")}]`
+            : "") +
+          (skipped.length
+            ? ` / 스킵 ${skipped.map((row) => `${row.name} 노출${row.impressions}/클릭${row.clicks}`).join(", ")}`
+            : ""),
+      );
+      if (!active.length) {
+        onSave();
+        continue;
+      }
+      for (const row of active) {
+        const target = upsertGroup(camp, row);
+        try {
+          const check = await downloadOneDay(page, camp, target, date, excelDir);
+          collected += 1;
+          console.log(
+            `  ${date} ${target.name} 키워드 ${check.keywords} 노출 ${check.impressions} 클릭 ${check.clicks} 전환 ${check.conversions}`,
+          );
+        } catch (error) {
+          fail += 1;
+          const message = error instanceof Error ? error.message : String(error);
+          issues.push(`${date} ${target.name}: ${message}`);
+          console.log(`  ${date} ${target.name} 실패 — ${message}`);
+        }
+        await backToCampaign(page, camp);
+        onSave();
+      }
+    }
+    if (fail === 0) {
+      const line = `${camp.name} ${label} 정상 수집 완료` + (collected ? "" : " (해당 기간 노출·클릭 그룹 없음)");
+      notes.push(line);
+      console.log(line);
+    } else {
+      const line = `${camp.name} ${label} 점검 실패 — ${issues[0] ?? `실패 ${fail}건`}`;
+      notes.push(line);
+      console.log(line);
+    }
+    onSave();
+  }
 }
 
 export async function crawlNaverAds(
@@ -121,100 +228,24 @@ export async function crawlNaverAds(
   onTree?: (tree: unknown[], notes: string[]) => void,
 ): Promise<PlatformCapture> {
   const tree = seedTree();
-  const days = eachDay(...dateRange);
+  const weeks = adsWeeks(...dateRange);
   const notes: string[] = [];
   const onSave = () => onTree?.(tree, notes);
+  const excelDir = resolve(root, "data/ads-raw/naver-excel");
+  ensureDir(excelDir);
 
-  const scrapeGroupPage = async (page: import("playwright").Page, group: GroupNode) => {
-    await Promise.race([clickNaverAllStatus(page), sleep(5000)]);
-    for (const date of days) {
-      const ok = await Promise.race([
-        setNaverSameDay(page, date),
-        sleep(25_000).then(() => false),
-      ]);
-      console.log(`  그룹 ${group.name || group.id} ${date} 날짜지정 ${ok ? "OK" : "실패"}`);
-      if (!ok) continue;
-      let grid = await readGrid(page);
-      const gridImp = (g: Grid) =>
-        g.rows.reduce((sum, row) => {
-          const fromHeader = numCell(cell(g, row, /노출수|^노출$/));
-          return sum + (fromHeader || metrics(g, row).impressions || 0);
-        }, 0);
-      if (gridImp(grid) === 0) {
-        await sleep(2500);
-        grid = await readGrid(page);
-      }
-      const next = grid.rows.map((row) => ({
-        ...metrics(grid, row),
-        href: row.href,
-        cells: row.cells,
-      }));
-      const prev = group.keywordsByDate[date];
-      const prevImp = Array.isArray(prev)
-        ? prev.reduce((sum, row) => sum + (Number((row as { impressions?: number }).impressions) || 0), 0)
-        : 0;
-      const nextImp = next.reduce((sum, row) => sum + (row.impressions || 0), 0);
-      if (prevImp > nextImp) {
-        console.log(`  그룹 ${group.name || group.id} ${date} 기존 노출 ${prevImp} 유지 (새 수집 ${nextImp})`);
-      } else {
-        group.keywordsByDate[date] = next;
-        console.log(`  그룹 ${group.name || group.id} ${date} 키워드 ${grid.rows.length}행 노출 ${nextImp}`);
-      }
-      onSave();
-    }
-  };
+  notes.push("캠페인 상세에서 하루 기간을 맞춘 뒤, 표에 노출수와 클릭수가 있는 광고그룹만 엑셀을 받습니다.");
+  console.log(`네이버 캠페인 ${tree.length}개, ${weeks.length}주 (${dateRange[0]} ~ ${dateRange[1]})`);
 
-  notes.push("기존 그룹 ID로 일자별 키워드를 수집합니다.");
-
-  const preferred = [
-    "grp-a001-01-000000071884521",
-    "grp-a001-01-000000071884522",
-    "grp-a001-01-000000071884523",
-    "grp-a001-01-000000071884524",
-    "grp-a001-01-000000071884526",
-    "grp-a001-01-000000071868540",
-    "grp-a001-01-000000071868541",
-    "grp-a001-01-000000071869322",
-    "grp-a001-01-000000071874027",
-    "grp-a001-01-000000071872756",
-  ];
-  const jobs: GroupNode[] = [];
-  const seen = new Set<string>();
-  const take = (group: GroupNode) => {
-    if (seen.has(group.id)) return;
-    seen.add(group.id);
-    jobs.push(group);
-  };
-  for (const id of preferred) {
-    const group = tree.flatMap((c) => c.groups).find((g) => g.id === id);
-    if (group) take(group);
-    else take({ id, name: id, href: groupHref(id), keywordsByDate: {} });
-  }
-  for (const camp of tree) for (const group of camp.groups) take(group);
-
-  notes.push(`광고그룹 ${jobs.length}개 × ${days.length}일`);
-  console.log(`네이버 광고그룹 ${jobs.length}개, ${days[0]} ~ ${days[days.length - 1]}`);
-
-  for (const group of jobs) {
-    let camp = tree.find((c) => c.groups.some((g) => g.id === group.id));
-    if (!camp) {
-      camp = tree.find((c) => c.id === "cmp-a001-01-000000010974395") || tree[0];
-      camp.groups.push(group);
-    }
-    const target = camp.groups.find((g) => g.id === group.id) || group;
-    const page = await openFreshPage(context, target.href || groupHref(target.id));
+  for (const camp of tree) {
+    const page = await openFreshPage(context, camp.href);
     if (!page) {
-      notes.push(`그룹 열기 실패 ${target.id}`);
-      console.log(`그룹 열기 실패 ${target.id}`);
+      notes.push(`캠페인 상세 열기 실패 ${camp.name}`);
+      console.log(`캠페인 상세 열기 실패 ${camp.name}`);
       continue;
     }
-    try {
-      await scrapeGroupPage(page, target);
-    } catch (error) {
-      notes.push(`그룹 수집 오류 ${target.id}: ${error instanceof Error ? error.message : error}`);
-      console.log(`그룹 수집 오류 ${target.id}`);
-    }
-    onSave();
+    await crawlCampaignWeeks(page, camp, weeks, excelDir, notes, onSave);
+    await page.close().catch(() => undefined);
   }
 
   return {
@@ -224,4 +255,35 @@ export async function crawlNaverAds(
     networkJson: [{ url: "scrape://naver-tree", body: tree }],
     tables: [],
   };
+}
+
+export function mergeNaverTrees(prev: unknown[] | undefined, next: unknown[]): CampNode[] {
+  const camps = new Map<string, CampNode>();
+  for (const camp of (prev || []) as CampNode[]) {
+    camps.set(camp.id, {
+      ...camp,
+      groups: camp.groups.map((group) => ({ ...group, keywordsByDate: { ...group.keywordsByDate } })),
+    });
+  }
+  for (const camp of next as CampNode[]) {
+    const old = camps.get(camp.id);
+    if (!old) {
+      camps.set(camp.id, camp);
+      continue;
+    }
+    old.name = camp.name || old.name;
+    old.href = camp.href || old.href;
+    for (const group of camp.groups) {
+      const found = old.groups.find((item) => item.id === group.id || item.name === group.name);
+      if (!found) {
+        old.groups.push(group);
+        continue;
+      }
+      if (group.id) found.id = group.id;
+      found.name = group.name || found.name;
+      found.href = group.href || found.href;
+      found.keywordsByDate = { ...found.keywordsByDate, ...group.keywordsByDate };
+    }
+  }
+  return [...camps.values()];
 }

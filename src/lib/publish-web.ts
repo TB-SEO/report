@@ -1,9 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { root } from "../collectors/shared/chrome.js";
 import { putAppDocument, type AppDocId } from "./app-documents.js";
 import { buildReportFromLocalFiles } from "../web/load-report.js";
 import { buildAdsFromLocalFiles } from "../web/load-ads.js";
+import { loadPublishedWbs } from "../web/load-wbs.js";
 
 export async function publishWebDoc(id: AppDocId) {
   if (id === "report") {
@@ -14,9 +12,7 @@ export async function publishWebDoc(id: AppDocId) {
     await putAppDocument("ads", buildAdsFromLocalFiles());
     return;
   }
-  const file = join(root, "src/web/public/wbs-data.json");
-  if (!existsSync(file)) throw new Error("wbs-data.json 이 없습니다.");
-  await putAppDocument("wbs", JSON.parse(readFileSync(file, "utf8")));
+  await putAppDocument("wbs", await loadPublishedWbs(true));
 }
 
 export async function publishWebDocs(ids: AppDocId[] = ["report", "ads", "wbs"]) {
