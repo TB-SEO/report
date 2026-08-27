@@ -399,7 +399,7 @@
           [{ label: "방문 경로" }, { label: "source" }, { label: "campaign" }, { label: "content" }, { label: "브라우저", num: true }],
           srcRows.map(([key, n]) => {
             const [path, s, c, t] = key.split("\t");
-            return [`<td>${path}</td>`, `<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
+            return [`<td>${window.TASSI.landingPathHtml(path, "(없음)")}</td>`, `<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
           }),
           "유입 기록이 없습니다.",
         );
@@ -408,7 +408,7 @@
           [{ label: "visitor" }, { label: "방문 경로" }, { label: "IP" }, { label: "이벤트", num: true }, { label: "마지막" }],
           visitors.map((v) => [
             `<td class="mono">${shortId(v.id)}</td>`,
-            `<td>${dash(v.firstLandingPath)}</td>`,
+            `<td>${window.TASSI.landingPathHtml(v.firstLandingPath)}</td>`,
             `<td class="mono">${dash(v.lastIpMasked)}</td>`,
             `<td class="num">${fmt(v.eventCount)}</td>`,
             `<td>${new Date(v.lastSeenAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
@@ -458,7 +458,7 @@
               `<td>${dash(result)}</td>`,
               `<td class="mono">${shortId(e.visitorId)}</td>`,
               `<td class="mono">${play ? shortId(play) : "—"}</td>`,
-              `<td>${dash(e.firstLandingPath || e.landingPath)}</td>`,
+              `<td>${window.TASSI.landingPathHtml(e.firstLandingPath || e.landingPath)}</td>`,
               `<td class="mono">${dash(e.clientIpMasked || e.lastIpMasked)}</td>`,
             ];
           }),

@@ -1053,7 +1053,7 @@
               ${s.pathRows.length ? `
               <table class="hit">
                 <thead><tr><th>방문 경로</th><th class="num">브라우저</th></tr></thead>
-                <tbody>${s.pathRows.map(([name, n]) => `<tr><td class="title">${name}</td><td class="num">${fmt(n)}</td></tr>`).join("")}</tbody>
+                <tbody>${s.pathRows.map(([name, n]) => `<tr><td class="title">${window.TASSI.landingPathHtml(name)}</td><td class="num">${fmt(n)}</td></tr>`).join("")}</tbody>
               </table>` : `<p class="notes">이 기간 서비스 이용 로그가 없습니다. 상세는 <a href="service.html">서비스</a>에서 확인하세요.</p>`}
             </td>
           </tr></table>
