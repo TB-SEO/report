@@ -49,7 +49,7 @@
     <script>
       const labels = { TISTORY: "티스토리", VELOG: "벨로그", BRUNCH: "브런치" };
       const when = (iso) => iso ? new Date(iso).toLocaleString("ko-KR") : "-";
-      fetch(window.TASSI.api("report")).then((r) => r.json()).then((report) => {
+      window.TASSI.loadJson("report", window.TASSI.api("report")).then((report) => {
         document.getElementById("rows").innerHTML = report.platforms.map((p) => {
           const c = p.check || { ok: false, notes: ["점검 정보 없음"] };
           const range = p.dateRange ? `${p.dateRange[0]} ~ ${p.dateRange[1]}` : "-";

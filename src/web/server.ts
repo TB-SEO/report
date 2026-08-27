@@ -8,7 +8,7 @@ import { loadReport } from "./load-report.js";
 import { adsPayload } from "./load-ads.js";
 import { loadPublishedWbs } from "./load-wbs.js";
 import { loadServiceReport } from "./load-service.js";
-import { listWeeks, readWeek, weekRange } from "./weeks-store.js";
+import { listWeeksLive, readWeekLive, weekRange } from "./weeks-store.js";
 import { saveWeek } from "../scripts/save-week.js";
 
 loadEnv();
@@ -60,7 +60,7 @@ const server = createServer((req, res) => {
         return;
       }
       if (url === "/api/weeks") {
-        sendJson(200, { weeks: listWeeks() });
+        sendJson(200, { weeks: await listWeeksLive() });
         return;
       }
       if (url.startsWith("/api/weeks/")) {
@@ -78,7 +78,7 @@ const server = createServer((req, res) => {
           sendJson(200, { ok: true, weekId: snapshot.weekId, from: snapshot.from, to: snapshot.to });
           return;
         }
-        const found = readWeek(weekId);
+        const found = await readWeekLive(weekId);
         if (!found) {
           sendJson(404, { error: "해당 주 저장본이 없습니다.", weekId, ...weekRange(weekId) });
           return;

@@ -653,8 +653,7 @@
         if (loading) return;
         loading = true;
         try {
-          const res = await fetch(window.TASSI.api("ads") + (window.TASSI.isPages ? "" : "?t=" + Date.now()));
-          const next = await res.json();
+          const next = await window.TASSI.loadJson("ads", window.TASSI.api("ads") + (window.TASSI.isPages ? "" : "?t=" + Date.now()));
           const nextStamp = JSON.stringify(next.days || []);
           const first = !report;
           report = next;

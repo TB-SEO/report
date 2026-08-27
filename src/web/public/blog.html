@@ -448,8 +448,7 @@
       }
 
       async function load() {
-        const res = await fetch(window.TASSI.api("report"));
-        report = await res.json();
+        report = await window.TASSI.loadJson("report", window.TASSI.api("report"));
         render();
       }
       load();

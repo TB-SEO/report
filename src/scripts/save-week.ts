@@ -11,7 +11,7 @@ import {
   listWeeks,
   publicDir,
   weekRange,
-  writeWeek,
+  writeWeekLive,
 } from "../web/weeks-store.js";
 
 loadEnv();
@@ -33,7 +33,7 @@ export async function saveWeek(weekId: string, sections?: Record<string, string>
     service: await loadServiceReport(),
     wbs: await loadPublishedWbs(true),
   };
-  writeWeek(snapshot);
+  await writeWeekLive(snapshot);
   const apiDir = resolve(publicDir, "api");
   mkdirSync(apiDir, { recursive: true });
   writeFileSync(resolve(apiDir, "report.json"), JSON.stringify(snapshot.report));

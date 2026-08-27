@@ -10,12 +10,35 @@ window.TASSI = {
     if (this.isPages) return new URL(`api/${name}.json`, document.baseURI).href;
     return `/api/${name}`;
   },
+  sbHeaders() {
+    return {
+      apikey: this.supabaseAnonKey,
+      Authorization: `Bearer ${this.supabaseAnonKey}`,
+    };
+  },
+  async loadAppDoc(id) {
+    const url = `${this.supabaseUrl}/rest/v1/app_documents?id=eq.${encodeURIComponent(id)}&select=payload`;
+    const res = await fetch(url, { headers: this.sbHeaders() });
+    if (!res.ok) throw new Error(`app_documents ${id} ${res.status}`);
+    const rows = await res.json();
+    return rows?.[0]?.payload ?? null;
+  },
+  async loadJson(id, fallbackUrl) {
+    try {
+      const payload = await this.loadAppDoc(id);
+      if (payload) return payload;
+    } catch {
+      // 정적/로컬 API로 이어감
+    }
+    const res = await fetch(fallbackUrl);
+    if (!res.ok) return null;
+    return res.json();
+  },
   async loadService() {
     const res = await fetch(`${this.supabaseUrl}/rest/v1/rpc/shiptype_analytics_report`, {
       method: "POST",
       headers: {
-        apikey: this.supabaseAnonKey,
-        Authorization: `Bearer ${this.supabaseAnonKey}`,
+        ...this.sbHeaders(),
         "Content-Type": "application/json",
       },
       body: "{}",
@@ -31,5 +54,12 @@ window.TASSI = {
   },
   week(id) {
     return this.isPages ? new URL(`weeks/${id}.json`, document.baseURI).href : `/api/weeks/${id}`;
+  },
+  async loadWeeksIndex() {
+    const payload = await this.loadJson("weeks", this.weeksIndex());
+    return payload?.weeks ? payload : { weeks: payload?.weeks || [] };
+  },
+  async loadWeek(id) {
+    return this.loadJson(`week-${id}`, this.week(id));
   },
 };

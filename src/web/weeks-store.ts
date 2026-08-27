@@ -87,3 +87,37 @@ export function writeWeek(snapshot: WeekSnapshot) {
   const weeks = [...new Set([...listWeeks(), snapshot.weekId])].sort();
   writeFileSync(resolve(weeksDir, "index.json"), JSON.stringify({ weeks }, null, 2), "utf8");
 }
+
+export async function listWeeksLive(): Promise<string[]> {
+  try {
+    const { getAppDocument } = await import("../lib/app-documents.js");
+    const stored = await getAppDocument<{ weeks: string[] }>("weeks");
+    if (stored?.payload?.weeks?.length) return [...new Set(stored.payload.weeks)].sort();
+  } catch {
+    // 파일 목록으로 이어감
+  }
+  return listWeeks();
+}
+
+export async function readWeekLive(weekId: string): Promise<WeekSnapshot | null> {
+  try {
+    const { getAppDocument } = await import("../lib/app-documents.js");
+    const stored = await getAppDocument<WeekSnapshot>(`week-${weekId}`);
+    if (stored?.payload) return stored.payload;
+  } catch {
+    // 파일 저장본으로 이어감
+  }
+  return readWeek(weekId);
+}
+
+export async function writeWeekLive(snapshot: WeekSnapshot) {
+  writeWeek(snapshot);
+  const weeks = listWeeks();
+  try {
+    const { putAppDocument } = await import("../lib/app-documents.js");
+    await putAppDocument("weeks", { weeks });
+    await putAppDocument(`week-${snapshot.weekId}`, snapshot);
+  } catch (error) {
+    console.log(`Supabase 주간보고 저장 실패: ${error instanceof Error ? error.message : error}`);
+  }
+}

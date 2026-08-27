@@ -1,8 +1,8 @@
 import { createSupabaseClient } from "./supabase.js";
 
-export type AppDocId = "report" | "ads" | "wbs";
+export type AppDocId = "report" | "ads" | "wbs" | "weeks" | `week-${string}`;
 
-export async function putAppDocument(id: AppDocId, payload: unknown) {
+export async function putAppDocument(id: string, payload: unknown) {
   const sb = createSupabaseClient();
   const now = new Date().toISOString();
   const row = { id, payload, updated_at: now };
@@ -17,7 +17,7 @@ export async function putAppDocument(id: AppDocId, payload: unknown) {
   }
 }
 
-export async function getAppDocument<T>(id: AppDocId): Promise<{ payload: T; updatedAt: string } | null> {
+export async function getAppDocument<T>(id: string): Promise<{ payload: T; updatedAt: string } | null> {
   const sb = createSupabaseClient();
   const found = await sb.from("app_documents").select("payload, updated_at").eq("id", id).maybeSingle();
   if (found.error) throw new Error(`app_documents: ${found.error.message}`);
