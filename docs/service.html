@@ -22,6 +22,8 @@
       .kicker { color: var(--muted); font-size: 15px; margin-bottom: 12px; }
       h1 { font-size: 30px; line-height: 30px; font-weight: 400; letter-spacing: -0.3px; margin: 0 0 8px; color: var(--fg); }
       h2 { font-size: 16px; line-height: 24px; font-weight: 700; letter-spacing: -0.3px; margin: 28px 0 12px; color: var(--fg); }
+      .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 28px 0 12px; }
+      .section-head h2 { margin: 0; }
       .note { color: var(--muted); font-size: 13px; line-height: 20px; margin: 0 0 16px; }
       .units { display: flex; gap: 8px; margin: 0 0 20px; }
       .units button {
@@ -36,24 +38,94 @@
         cursor: pointer;
       }
       .units button.on { border-color: var(--action); color: var(--action); font-weight: 700; }
+      .grains { display: flex; gap: 6px; align-items: center; }
+      button { font-family: inherit; letter-spacing: -0.3px; cursor: pointer; }
+      .grain {
+        height: 32px; padding: 0 8px; border: 1px solid var(--hairline); border-radius: 4px;
+        background: transparent; color: var(--fg); font-size: 14px; line-height: 18px;
+      }
+      .grain.on { border-color: var(--action); background: var(--action); color: #ffffff; }
+      .period-label { min-width: 148px; font-size: 16px; line-height: 24px; font-weight: 700; color: var(--fg); margin: 0 0 12px; }
       .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; margin-bottom: 20px; }
       article .label { color: var(--muted); font-size: 13px; line-height: 15px; }
       article .value { font-size: 28px; line-height: 30px; font-weight: 400; margin-top: 6px; color: var(--fg); }
       .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; }
-      .plot {
+      .plot-frame {
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr) 36px;
+        column-gap: 8px;
+        align-items: start;
+      }
+      .y-axis {
+        height: 180px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 12px;
+      }
+      .y-axis.left { text-align: right; }
+      .y-axis.right { text-align: left; }
+      .plot-main { position: relative; min-width: 0; }
+      .gridlines { position: absolute; left: 0; right: 0; top: 0; height: 180px; pointer-events: none; }
+      .gridlines i { position: absolute; left: 0; right: 0; border-top: 1px solid var(--hairline); }
+      .chart {
+        display: grid;
+        grid-template-columns: repeat(14, minmax(0, 1fr));
+        align-items: end;
+        height: 180px;
+        width: 100%;
+      }
+      .col {
+        width: 100%;
         height: 180px;
         display: flex;
         align-items: flex-end;
-        gap: 6px;
-        border-bottom: 1px solid var(--hairline);
-        padding: 0 4px;
+        justify-content: center;
+        cursor: pointer;
       }
-      .col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
-      .stack { display: flex; flex-direction: column-reverse; height: 100%; justify-content: flex-end; }
-      .bar { width: 100%; border-radius: 2px 2px 0 0; min-height: 0; }
-      .axis { display: flex; gap: 6px; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 12px; }
-      .axis span { flex: 1; text-align: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .legend { display: flex; gap: 14px; margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+      .col.on { box-shadow: inset 0 -2px 0 var(--fg); }
+      .track {
+        height: 180px;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 2px;
+      }
+      .seg { width: 6px; min-height: 1px; border-radius: 1px 1px 0 0; }
+      .seg.visit { background: #2d5be3; }
+      .seg.start { background: #00a1ff; }
+      .seg.result { background: #12b886; }
+      .axis-row { display: flex; align-items: flex-start; gap: 4px; margin-top: 8px; }
+      .pager {
+        width: 14px; height: 14px; flex: none; padding: 0; margin-top: 0;
+        border: 0; background: transparent; color: var(--muted); font-size: 12px; line-height: 14px;
+      }
+      .pager:disabled { color: var(--hairline); cursor: default; }
+      .axis {
+        display: grid;
+        grid-template-columns: repeat(14, minmax(0, 1fr));
+        flex: 1;
+        min-width: 0;
+        height: 40px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 14px;
+      }
+      .axis span {
+        width: 100%;
+        text-align: center;
+        white-space: nowrap;
+      }
+      .axis span.show.vert {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        height: 40px;
+        line-height: 12px;
+      }
+      .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin: 0 0 12px; }
       .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 1px; margin-right: 6px; }
       table { width: 100%; border-collapse: collapse; }
       th, td { text-align: left; padding: 10px 8px 10px 0; border-bottom: 1px solid var(--hairline); font-size: 14px; line-height: 18px; vertical-align: top; }
@@ -76,7 +148,10 @@
       <p class="note" id="note"></p>
       <div class="units" id="units"></div>
       <div class="cards" id="cards"></div>
-      <h2>일별 이용</h2>
+      <div class="section-head">
+        <h2 id="chartHead">일간 이용</h2>
+        <div class="grains" id="grains"></div>
+      </div>
       <div id="chart"></div>
       <div class="grid">
         <div>
@@ -88,7 +163,7 @@
           <div id="results"></div>
         </div>
       </div>
-      <h2>유입 (첫 랜딩 · 리퍼러 · UTM)</h2>
+      <h2>유입 (방문 경로 · UTM)</h2>
       <div id="sources"></div>
       <h2>브라우저 (visitor_id)</h2>
       <div id="browsers"></div>
@@ -111,13 +186,19 @@
         retry: "다시 하기",
       };
       const COLORS = { visit: "#2d5be3", start: "#00a1ff", result: "#12b886", cta_click: "#f86400", share: "#9b59b6", save_image: "#e0972d", retry: "#828c94" };
+      const SERIES = ["visit", "start", "result"];
+      const grainLabels = { day: "일간", week: "주간", month: "월간" };
+      const PAGE_SIZE = 14;
       const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
       const dash = (v) => (v == null || v === "" ? "—" : v);
       const shortId = (id) => String(id || "").slice(0, 8);
       let report = null;
       let unit = "browser";
+      let grain = "day";
+      let selectedKey = null;
+      let chartPage = 0;
 
-      function md(ymd) {
+      function shortDay(ymd) {
         const [, m, d] = (ymd || "").split("-");
         return `${Number(m)}/${Number(d)}`;
       }
@@ -125,8 +206,9 @@
         if (n <= 0) return 1;
         const pow = Math.pow(10, Math.floor(Math.log10(n)));
         const d = n / pow;
-        const nice = d <= 1 ? 1 : d <= 2 ? 2 : d <= 5 ? 5 : 10;
-        return nice * pow;
+        const nice = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => d <= s) || 10;
+        const v = nice * pow;
+        return v >= 10 ? Math.round(v) : Math.round(v * 100) / 100;
       }
       function kstToday() {
         return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
@@ -136,10 +218,40 @@
         date.setUTCDate(date.getUTCDate() + delta);
         return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
       }
-      function eachDay(from, to) {
-        const out = [];
-        for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
-        return out;
+      function weekStart(ymd) {
+        const date = new Date(`${ymd}T12:00:00+09:00`);
+        const offset = (date.getUTCDay() + 6) % 7;
+        return addDays(ymd, -offset);
+      }
+      function periodKey(ymd) {
+        if (grain === "month") return ymd.slice(0, 7);
+        if (grain === "week") return weekStart(ymd);
+        return ymd;
+      }
+      function periodLabel(key) {
+        if (grain === "month") {
+          const [y, m] = key.split("-");
+          return `${y}년 ${Number(m)}월`;
+        }
+        if (grain === "week") return `${shortDay(key)} – ${shortDay(addDays(key, 6))}`;
+        return shortDay(key);
+      }
+      function axisText(key) {
+        if (grain === "month") return `${Number(key.slice(5))}월`;
+        return shortDay(key);
+      }
+      function currentPeriodKey() { return periodKey(kstToday()); }
+      function previousPeriodKey(key) {
+        if (grain === "month") {
+          const [y, m] = key.split("-").map(Number);
+          const date = new Date(Date.UTC(y, m - 2, 1));
+          return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+        }
+        if (grain === "week") return addDays(key, -7);
+        return addDays(key, -1);
+      }
+      function emptyBucket(key) {
+        return { key, visit: 0, start: 0, result: 0 };
       }
       function table(headers, rows, empty) {
         if (!rows.length) return `<p class="empty">${empty}</p>`;
@@ -168,36 +280,80 @@
           ["브라우저", stats.browsers ?? visitors.length],
           ["IP 단위", stats.ips ?? 0],
           ["플레이", stats.plays ?? 0],
-          ["결과 화면", stats.results ?? 0],
+          ["T-ASSI 살펴보기", events.filter((e) => e.eventName === "cta_click").length],
           ["이벤트", stats.events ?? events.length],
         ].map(([label, value]) => `<article><div class="label">${label}</div><div class="value">${fmt(value)}</div></article>`).join("");
 
-        const today = kstToday();
-        const from = events.length ? events.reduce((min, e) => (e.date < min ? e.date : min), events[0].date) : addDays(today, -13);
-        const to = today < from ? from : today;
-        const span = eachDay(from, to).slice(-21);
-        const byDate = new Map(span.map((d) => [d, { visit: 0, start: 0, result: 0 }]));
+        document.getElementById("chartHead").textContent = `${grainLabels[grain]} 이용`;
+        document.getElementById("grains").innerHTML = ["day", "week", "month"].map((id) =>
+          `<button type="button" class="grain ${id === grain ? "on" : ""}" data-id="${id}">${grainLabels[id]}</button>`
+        ).join("");
+        document.querySelectorAll("#grains .grain").forEach((btn) => {
+          btn.onclick = () => { grain = btn.dataset.id; selectedKey = null; chartPage = 0; render(); };
+        });
+
+        const byKey = new Map();
         for (const e of events) {
-          const row = byDate.get(e.date);
-          if (!row || !(e.eventName in row)) continue;
-          row[e.eventName] += 1;
+          if (!e.date || !SERIES.includes(e.eventName)) continue;
+          const key = periodKey(e.date);
+          if (!byKey.has(key)) byKey.set(key, emptyBucket(key));
+          byKey.get(key)[e.eventName] += 1;
         }
-        const max = niceCeil(Math.max(1, ...[...byDate.values()].map((r) => r.visit + r.start + r.result)));
+        const oldest = [...byKey.keys()].sort()[0] || currentPeriodKey();
+        let span = 0;
+        for (let key = currentPeriodKey(); key >= oldest && span < 400; key = previousPeriodKey(key)) span += 1;
+        const pageCount = Math.max(1, Math.ceil(span / PAGE_SIZE));
+        if (chartPage > pageCount - 1) chartPage = pageCount - 1;
+        if (chartPage < 0) chartPage = 0;
+        let cursor = currentPeriodKey();
+        for (let i = 0; i < chartPage * PAGE_SIZE; i++) cursor = previousPeriodKey(cursor);
+        const slots = [];
+        for (let i = 0; i < PAGE_SIZE; i++) {
+          slots.push(byKey.get(cursor) || emptyBucket(cursor));
+          cursor = previousPeriodKey(cursor);
+        }
+        slots.reverse();
+        const latestData = [...slots].reverse().find((row) => row.visit || row.start || row.result);
+        if (!selectedKey || !slots.some((row) => row.key === selectedKey)) selectedKey = (latestData || slots.at(-1)).key;
+        const selected = slots.find((row) => row.key === selectedKey) || slots[0];
+        const max = Math.max(1, ...slots.flatMap((row) => SERIES.map((k) => row[k] || 0)));
+        const top = niceCeil(max);
+        const yMarks = [top, top / 2, 0].map((t) => (Number.isInteger(t) ? t : Math.round(t * 10) / 10));
+        const canNewer = chartPage > 0;
+        const canOlder = chartPage < pageCount - 1;
         document.getElementById("chart").innerHTML = `
-          <div class="plot">${span.map((d) => {
-            const row = byDate.get(d);
-            const parts = ["visit", "start", "result"].map((k) => {
-              const h = ((row[k] || 0) / max) * 100;
-              return h < 0.4 ? "" : `<div class="bar" style="height:${h}%;background:${COLORS[k]}"></div>`;
-            }).join("");
-            return `<div class="col"><div class="stack">${parts}</div></div>`;
-          }).join("")}</div>
-          <div class="axis">${span.map((d) => `<span>${md(d)}</span>`).join("")}</div>
+          <div class="period-label">${periodLabel(selected.key)} · 인트로 ${fmt(selected.visit)} · /play ${fmt(selected.start)} · 결과 ${fmt(selected.result)}</div>
           <div class="legend">
             <span><i style="background:${COLORS.visit}"></i>인트로 (/)</span>
             <span><i style="background:${COLORS.start}"></i>/play 진입</span>
             <span><i style="background:${COLORS.result}"></i>결과</span>
+          </div>
+          <div class="plot-frame">
+            <div class="y-axis left">${yMarks.map((t) => `<span>${fmt(t)}</span>`).join("")}</div>
+            <div class="plot-main">
+              <div class="gridlines">${yMarks.map((_, i) => `<i style="top:${(i / (yMarks.length - 1)) * 180}px"></i>`).join("")}</div>
+              <div class="chart">
+                ${slots.map((row) => {
+                  const parts = SERIES.map((k) => {
+                    const h = Math.round(((row[k] || 0) / top) * 180);
+                    return h ? `<div class="seg ${k}" style="height:${h}px"></div>` : "";
+                  }).join("");
+                  return `<div class="col ${row.key === selectedKey ? "on" : ""}" data-key="${row.key}"><div class="track">${parts}</div></div>`;
+                }).join("")}
+              </div>
+              <div class="axis-row">
+                <button type="button" class="pager" id="chartOlder" ${canOlder ? "" : "disabled"} aria-label="이전">‹</button>
+                <div class="axis">${slots.map((row) => `<span class="show vert">${axisText(row.key)}</span>`).join("")}</div>
+                <button type="button" class="pager" id="chartNewer" ${canNewer ? "" : "disabled"} aria-label="최근">›</button>
+              </div>
+            </div>
+            <div class="y-axis right">${yMarks.map((t) => `<span>${fmt(t)}</span>`).join("")}</div>
           </div>`;
+        document.getElementById("chartNewer").onclick = () => { if (chartPage > 0) { chartPage -= 1; selectedKey = null; render(); } };
+        document.getElementById("chartOlder").onclick = () => { if (chartPage < pageCount - 1) { chartPage += 1; selectedKey = null; render(); } };
+        document.querySelectorAll("#chart .col[data-key]").forEach((col) => {
+          col.onclick = () => { selectedKey = col.dataset.key; render(); };
+        });
 
         const funnelRows = FUNNEL.map((name) => {
           const list = events.filter((e) => e.eventName === name);
@@ -232,7 +388,6 @@
         for (const v of visitors) {
           const key = [
             v.firstLandingPath || "(없음)",
-            v.firstReferrer || "(직접)",
             v.firstUtmSource || "(UTM 없음)",
             v.firstUtmCampaign || "—",
             v.firstUtmContent || "—",
@@ -241,20 +396,19 @@
         }
         const srcRows = [...srcMap.entries()].sort((a, b) => b[1] - a[1]);
         document.getElementById("sources").innerHTML = table(
-          [{ label: "첫 랜딩" }, { label: "첫 리퍼러" }, { label: "source" }, { label: "campaign" }, { label: "content" }, { label: "브라우저", num: true }],
+          [{ label: "방문 경로" }, { label: "source" }, { label: "campaign" }, { label: "content" }, { label: "브라우저", num: true }],
           srcRows.map(([key, n]) => {
-            const [path, ref, s, c, t] = key.split("\t");
-            return [`<td>${path}</td>`, `<td>${ref}</td>`, `<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
+            const [path, s, c, t] = key.split("\t");
+            return [`<td>${path}</td>`, `<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
           }),
           "유입 기록이 없습니다.",
         );
 
         document.getElementById("browsers").innerHTML = table(
-          [{ label: "visitor" }, { label: "첫 랜딩" }, { label: "첫 리퍼러" }, { label: "IP" }, { label: "이벤트", num: true }, { label: "마지막" }],
+          [{ label: "visitor" }, { label: "방문 경로" }, { label: "IP" }, { label: "이벤트", num: true }, { label: "마지막" }],
           visitors.map((v) => [
             `<td class="mono">${shortId(v.id)}</td>`,
             `<td>${dash(v.firstLandingPath)}</td>`,
-            `<td>${dash(v.firstReferrer)}</td>`,
             `<td class="mono">${dash(v.lastIpMasked)}</td>`,
             `<td class="num">${fmt(v.eventCount)}</td>`,
             `<td>${new Date(v.lastSeenAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
@@ -281,18 +435,33 @@
           "IP가 있는 이벤트가 없습니다. 배포 전·로컬은 비어 있는 것이 정상입니다.",
         );
 
-        const recent = events.slice(0, 100);
+        const recentGroups = [];
+        for (const e of events) {
+          const last = recentGroups[recentGroups.length - 1];
+          if (last && last.visitorId === e.visitorId) last.items.push(e);
+          else {
+            if (recentGroups.length >= 100) break;
+            recentGroups.push({ visitorId: e.visitorId, items: [e] });
+          }
+        }
         document.getElementById("timeline").innerHTML = table(
-          [{ label: "시각" }, { label: "이벤트" }, { label: "결과" }, { label: "visitor" }, { label: "play" }, { label: "경로" }, { label: "IP" }],
-          recent.map((e) => [
-            `<td>${new Date(e.occurredAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
-            `<td>${LABELS[e.eventName] || e.eventName}</td>`,
-            `<td>${dash(e.resultName)}</td>`,
-            `<td class="mono">${shortId(e.visitorId)}</td>`,
-            `<td class="mono">${e.playId ? shortId(e.playId) : "—"}</td>`,
-            `<td>${dash(e.landingPath)}</td>`,
-            `<td class="mono">${dash(e.clientIpMasked || e.lastIpMasked)}</td>`,
-          ]),
+          [{ label: "시각" }, { label: "이벤트" }, { label: "결과" }, { label: "visitor" }, { label: "play" }, { label: "방문 경로" }, { label: "IP" }],
+          recentGroups.map((group) => {
+            const e = group.items[0];
+            const n = group.items.length;
+            const label = LABELS[e.eventName] || e.eventName;
+            const result = group.items.find((row) => row.resultName)?.resultName;
+            const play = group.items.find((row) => row.playId)?.playId;
+            return [
+              `<td>${new Date(e.occurredAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
+              `<td>${label}${n > 1 ? ` + ${n}건` : ""}</td>`,
+              `<td>${dash(result)}</td>`,
+              `<td class="mono">${shortId(e.visitorId)}</td>`,
+              `<td class="mono">${play ? shortId(play) : "—"}</td>`,
+              `<td>${dash(e.firstLandingPath || e.landingPath)}</td>`,
+              `<td class="mono">${dash(e.clientIpMasked || e.lastIpMasked)}</td>`,
+            ];
+          }),
           "이벤트가 없습니다.",
         );
       }

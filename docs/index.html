@@ -36,6 +36,7 @@
       .week-nav .wed { font-size: 13px; font-weight: 700; color: #1b1f27; min-width: 148px; }
       .empty-week { color: #9aa1ac; margin: 12px 0 4px; font-size: 13px; }
       .act.primary { border-color: #2d5be3; background: #2d5be3; color: #fff; font-weight: 700; }
+      a.act { display: inline-flex; align-items: center; text-decoration: none; }
       .hint { color: #7a8291; font-size: 13px; line-height: 20px; margin: 0 0 14px; }
       .toast {
         position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -208,12 +209,6 @@
         .tag.BRUNCH { color: #00c6be; }
         .tag.NAVER { color: #03c75a; }
         .tag.GOOGLE { color: #4285f4; }
-        #pdf-wbs .pdf-wbs-page { overflow: hidden; width: 100%; }
-        #pdf-wbs .wbs-fit { overflow: hidden; width: 100%; max-width: 100%; transform-origin: top left; }
-        #pdf-wbs table.waffle { border-collapse: collapse; }
-        #pdf-wbs .row-header,
-        #pdf-wbs th.row-header,
-        #pdf-wbs .freezebar-cell { display: none !important; }
       }
     </style>
   </head>
@@ -223,7 +218,8 @@
         <div class="week-nav" id="periods"></div>
         <div class="grains">
           <button class="act primary" id="copyBtn" type="button">메일 복사</button>
-          <button class="act" id="pdfBtn" type="button">PDF 저장</button>
+          <button class="act" id="pdfBtn" type="button">보고서 출력</button>
+          <a class="act" id="wbsPdfBtn" href="https://docs.google.com/spreadsheets/d/e/2PACX-1vTa_yPuRFBStg8q3NK1IyA6Y6r_fT9uoJVggOpk3pVf0ti7ImbsYgUiuSvqLibwz2uWuEWSnFFAXXeB/pub?output=pdf" target="_blank" rel="noopener">WBS 출력</a>
         </div>
       </div>
       <p class="hint">주간보고는 매주 수요일(목~수)입니다. 1·2·4·5번은 그 주에 저장한 내용만 보입니다. 없는 주는 없음입니다. 3번 성과는 선택한 수요일 주간에 맞춰 최근 데이터를 보여 줍니다.</p>
@@ -429,7 +425,6 @@
         <section class="pdf-page" id="pdf-blog-days"></section>
         <section class="pdf-page" id="pdf-ads"></section>
         <section class="pdf-page" id="pdf-ads-days"></section>
-        <div id="pdf-wbs"></div>
       </div>
     </div>
     <div class="toast" id="toast"></div>
@@ -450,11 +445,9 @@
       let liveBlog = null;
       let liveAds = null;
       let liveSvc = null;
-      let liveWbs = null;
       let blog = null;
       let ads = null;
       let svc = null;
-      let wbsData = null;
 
       const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
       const won = (n) => `${fmt(Math.round(n || 0))}원`;
@@ -693,6 +686,7 @@
         const funnel = {};
         const people = {};
         const results = new Map();
+        const paths = new Map();
         const daily = new Map();
         for (const e of events) {
           funnel[e.eventName] = (funnel[e.eventName] || 0) + 1;
@@ -702,6 +696,9 @@
             const name = e.resultName || "(이름 없음)";
             results.set(name, (results.get(name) || 0) + 1);
           }
+          const path = e.firstLandingPath || e.landingPath || "(없음)";
+          if (!paths.has(path)) paths.set(path, new Set());
+          paths.get(path).add(e.visitorId);
           if (!daily.has(e.date)) daily.set(e.date, { visit: 0, start: 0, result: 0 });
           if (e.eventName in daily.get(e.date)) daily.get(e.date)[e.eventName] += 1;
         }
@@ -711,8 +708,11 @@
           ips: ips.size,
           plays: plays.size,
           results: events.filter((e) => e.eventName === "result").length,
+          cta: funnel.cta_click || 0,
+          ctaPeople: people.cta_click ? people.cta_click.size : 0,
           funnel,
           people,
+          pathRows: [...paths.entries()].map(([name, set]) => [name, set.size]).sort((a, b) => b[1] - a[1]).slice(0, 6),
           resultRows: [...results.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4),
           daily,
         };
@@ -788,33 +788,6 @@
         return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="display:block;max-width:100%;height:auto">${grid}${bars}${polylines}${labels}</svg>`;
       }
 
-      function renderWbsPdf() {
-        const target = document.getElementById("pdf-wbs");
-        const sheets = (wbsData?.sheets || []).filter((sheet) => sheet.table);
-        if (!sheets.length) {
-          target.innerHTML = `<section class="pdf-page"><h1>WBS</h1><p class="pdf-sub">구글 시트 게시본을 불러오지 못했습니다.</p></section>`;
-          return;
-        }
-        const esc = (value) => String(value).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
-        target.innerHTML = sheets.map((sheet, i) => {
-          const title = sheet.name === "WBS" ? "WBS 전체" : sheet.name;
-          return `<section class="pdf-page pdf-wbs-page"><h1>${esc(title)}</h1><p class="pdf-sub">Google Sheets 게시본</p><style>${sheet.css || ""}</style><div class="ritz wbs-fit wbs-g${i}">${sheet.table}</div></section>`;
-        }).join("");
-      }
-      function fitWbs() {
-        document.querySelectorAll("#pdf-wbs .wbs-fit").forEach((box) => {
-          const table = box.querySelector("table");
-          if (!table) return;
-          table.style.transform = "none";
-          const max = box.clientWidth || 1100;
-          const w = table.scrollWidth || table.offsetWidth;
-          const scale = w > max ? max / w : 1;
-          table.style.transformOrigin = "top left";
-          table.style.transform = scale < 0.999 ? `scale(${scale})` : "none";
-          box.style.height = `${Math.ceil((table.scrollHeight || table.offsetHeight) * scale)}px`;
-        });
-      }
-
       function chartBuckets(days, grainWeek) {
         if (!grainWeek) return days.map((d) => ({ key: d, label: md(d), dates: [d] }));
         const map = new Map();
@@ -863,7 +836,6 @@
         blog = liveBlog;
         ads = liveAds;
         svc = liveSvc;
-        wbsData = liveWbs || { sheets: [] };
       }
       function bindWeekNav() {
         const savedMark = weekList.includes(weekId) ? " · 저장됨" : "";
@@ -1054,14 +1026,14 @@
             <td class="stats">
               <table class="stat-grid">
                 <tr>
-                  ${stat("브라우저", fmt(s.visitors), delta(s.visitors, sPrev.visitors), `IP ${fmt(s.ips)} · 이벤트 ${fmt(s.events)} · 플레이 ${fmt(s.plays)}`)}
-                  ${stat("결과 화면", fmt(s.results), delta(s.results, sPrev.results), `인트로 ${fmt(s.funnel.visit || 0)} · /play ${fmt(s.funnel.start || 0)}`)}
+                  ${stat("T-ASSI 살펴보기", fmt(s.cta), delta(s.cta, sPrev.cta), `누른 브라우저 ${fmt(s.ctaPeople)} · 결과 ${fmt(s.results)}`)}
+                  ${stat("브라우저", fmt(s.visitors), delta(s.visitors, sPrev.visitors), `인트로 ${fmt(s.funnel.visit || 0)} · /play ${fmt(s.funnel.start || 0)}`)}
                 </tr>
               </table>
-              ${s.resultRows.length ? `
+              ${s.pathRows.length ? `
               <table class="hit">
-                <thead><tr><th>결과</th><th class="num">건수</th></tr></thead>
-                <tbody>${s.resultRows.map(([name, n]) => `<tr><td class="title">${name}</td><td class="num">${fmt(n)}</td></tr>`).join("")}</tbody>
+                <thead><tr><th>방문 경로</th><th class="num">브라우저</th></tr></thead>
+                <tbody>${s.pathRows.map(([name, n]) => `<tr><td class="title">${name}</td><td class="num">${fmt(n)}</td></tr>`).join("")}</tbody>
               </table>` : `<p class="notes">이 기간 서비스 이용 로그가 없습니다. 상세는 <a href="service.html">서비스</a>에서 확인하세요.</p>`}
             </td>
           </tr></table>
@@ -1200,7 +1172,6 @@
             }).join("")}</tbody>
           </table>
         `;
-        renderWbsPdf();
       }
 
       function toast(msg) {
@@ -1334,20 +1305,14 @@
           }
         }
       };
-      document.getElementById("pdfBtn").onclick = async () => {
+      document.getElementById("pdfBtn").onclick = () => {
         saveEdits();
-        if (!wbsData) {
-          try { wbsData = await fetch(window.TASSI.api("wbs")).then((r) => r.json()); }
-          catch { wbsData = { sheets: [] }; }
-          render();
-        }
         const { from, to } = weekRange(weekId);
         const prev = document.title;
         document.title = `주간보고_${from}_${to}`;
         const pdf = document.querySelector(".pdf-only");
         pdf.classList.add("measure");
         requestAnimationFrame(() => {
-          fitWbs();
           window.print();
           pdf.classList.remove("measure");
           document.title = prev;
@@ -1366,30 +1331,25 @@
         applyLiveOrSnap();
         restoreEdits();
         render();
-        if (wbsData) renderWbsPdf();
       }
 
       async function boot() {
         if (!weekId) weekId = lastWednesday(kstToday());
-        const [index, snap, b, a, s, w] = await Promise.all([
+        const [index, snap, b, a, s] = await Promise.all([
           fetch(window.TASSI.weeksIndex()).then((r) => r.json()).catch(() => ({ weeks: [] })),
           fetch(window.TASSI.week(weekId || lastWednesday(kstToday()))).then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch(window.TASSI.api("report")).then((r) => r.json()).catch(() => null),
           fetch(window.TASSI.api("ads")).then((r) => r.json()).catch(() => null),
           window.TASSI.loadService().catch(() => null),
-          fetch(window.TASSI.api("wbs")).then((r) => r.json()).catch(() => ({ sheets: [] })),
         ]);
         weekList = index.weeks || [];
         weekSnap = snap;
         liveBlog = b;
         liveAds = a;
         liveSvc = s;
-        liveWbs = w || { sheets: [] };
-        wbsData = liveWbs;
         applyLiveOrSnap();
         restoreEdits();
         render();
-        renderWbsPdf();
       }
       boot();
     </script>
