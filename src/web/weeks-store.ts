@@ -24,11 +24,15 @@ export function addDays(ymd: string, delta: number) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
 }
 
-/** 오늘을 포함한 가장 최근 수요일 */
-export function lastWednesday(ymd: string) {
+/** 해당 날이 속한 주간보고 주(목~수)의 수요일 */
+export function reportWednesday(ymd: string) {
   const dow = new Date(`${ymd}T12:00:00+09:00`).getUTCDay();
-  const since = (dow + 4) % 7;
-  return addDays(ymd, -since);
+  return addDays(ymd, (3 - dow + 7) % 7);
+}
+
+/** @deprecated reportWednesday와 동일. 과거에는 '이미 지난 수요일'이었음 */
+export function lastWednesday(ymd: string) {
+  return reportWednesday(ymd);
 }
 
 /** 그 주 목요일 ~ 수요일 */

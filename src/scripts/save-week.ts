@@ -7,7 +7,7 @@ import { loadServiceReport } from "../web/load-service.js";
 import { loadPublishedWbs } from "../web/load-wbs.js";
 import {
   extractDivInner,
-  lastWednesday,
+  reportWednesday,
   listWeeks,
   publicDir,
   weekRange,
@@ -48,7 +48,7 @@ export async function saveWeek(weekId: string, sections?: Record<string, string>
 async function main() {
   const arg = process.argv.find((item) => /^\d{4}-\d{2}-\d{2}$/.test(item));
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
-  const weekId = arg || lastWednesday(today);
+  const weekId = arg || reportWednesday(today);
   const snap = await saveWeek(weekId);
   console.log(`주간보고 저장 ${snap.weekId} (${snap.from} ~ ${snap.to})`);
 }

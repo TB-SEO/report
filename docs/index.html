@@ -33,7 +33,7 @@
         height: 32px; border: 1px solid #e2e5e9; border-radius: 4px; padding: 0 8px;
         font-family: inherit; font-size: 13px; color: #1b1f27;
       }
-      .week-nav .wed { font-size: 13px; font-weight: 700; color: #1b1f27; min-width: 148px; }
+      .week-nav .wed { font-size: 13px; font-weight: 700; color: #1b1f27; min-width: 280px; }
       .empty-week { color: #9aa1ac; margin: 12px 0 4px; font-size: 13px; }
       .act.primary { border-color: #2d5be3; background: #2d5be3; color: #fff; font-weight: 700; }
       a.act { display: inline-flex; align-items: center; text-decoration: none; }
@@ -70,6 +70,7 @@
       .sheet th { background: #f5f6f8; color: #4a5261; font-weight: 400; }
       .sheet .ok { color: #2ea043; font-weight: 700; }
       .sheet .ing { color: #e0972d; font-weight: 700; }
+      .sheet .always { color: #2d5be3; font-weight: 700; }
       .sheet .ctr { text-align: center; }
       .sheet .grp { font-weight: 700; text-align: center; }
       .sheet.note { margin-top: 8px; font-size: 12.5px; }
@@ -222,7 +223,7 @@
           <a class="act" id="wbsPdfBtn" href="https://docs.google.com/spreadsheets/d/e/2PACX-1vTa_yPuRFBStg8q3NK1IyA6Y6r_fT9uoJVggOpk3pVf0ti7ImbsYgUiuSvqLibwz2uWuEWSnFFAXXeB/pub?output=pdf" target="_blank" rel="noopener">WBS 출력</a>
         </div>
       </div>
-      <p class="hint">주간보고는 매주 수요일(목~수)입니다. 1·2·4·5번은 그 주에 저장한 내용만 보입니다. 없는 주는 없음입니다. 3번 성과는 선택한 수요일 주간에 맞춰 최근 데이터를 보여 줍니다.</p>
+      <p class="hint">주간보고는 목요일~수요일입니다. 오늘은 그 기간의 보고서를 엽니다. 1·2·4·5번은 그 주에 저장한 내용만 보입니다. 없는 주는 없음입니다. 3번 성과는 선택한 주간에 맞춰 최근 데이터를 보여 줍니다.</p>
 
       <div id="mail">
         <div class="mail-head">
@@ -258,49 +259,48 @@
                   <td class="ctr">-</td>
                 </tr>
                 <tr>
+                  <td class="grp" rowspan="3">광고 운영</td>
+                  <td>듀오링고 컨텐츠 제작 및 광고 게시</td>
+                  <td class="ing">70%</td>
+                  <td class="ctr">8/28</td>
+                  <td class="ctr">-</td>
+                </tr>
+                <tr>
+                  <td>시뮬레이션 콘텐츠 광고 게시 및 모니터링</td>
+                  <td class="always">상시 수행</td>
+                  <td class="ctr">-</td>
+                  <td class="ctr">-</td>
+                </tr>
+                <tr>
+                  <td>네이버 및 Google 키워드 광고 현황 모니터링</td>
+                  <td class="always">상시 수행</td>
+                  <td class="ctr">-</td>
+                  <td class="ctr">-</td>
+                </tr>
+                <tr>
                   <td class="grp" rowspan="2">서비스 운영 및 유지보수</td>
                   <td>시뮬레이션 서비스 운영 및 모니터링</td>
-                  <td class="ing">상시 수행</td>
+                  <td class="always">상시 수행</td>
                   <td class="ctr">-</td>
                   <td class="ctr">-</td>
                 </tr>
                 <tr>
                   <td>T-ASSI 랜딩 페이지 유지보수</td>
-                  <td class="ing">상시 수행</td>
+                  <td class="always">상시 수행</td>
                   <td class="ctr">-</td>
                   <td class="ctr">-</td>
                 </tr>
                 <tr>
-                  <td class="grp">전환 추적<br>관리</td>
+                  <td class="grp">전환 추적 관리</td>
                   <td>전환 추적 설정 및 데이터 확인</td>
                   <td class="ing">진행 중</td>
                   <td class="ctr">-</td>
                   <td class="ctr">-</td>
                 </tr>
                 <tr>
-                  <td class="grp" rowspan="2">Facebook<br>콘텐츠 광고</td>
-                  <td>Duolingo 콘텐츠 제작</td>
-                  <td class="ing">70%</td>
-                  <td class="ctr">8/28</td>
-                  <td class="ctr">-</td>
-                </tr>
-                <tr>
-                  <td>Duolingo 및 시뮬레이션 콘텐츠 게시 및 홍보</td>
-                  <td class="ing">상시 수행</td>
-                  <td class="ctr">-</td>
-                  <td class="ctr">-</td>
-                </tr>
-                <tr>
-                  <td class="grp">키워드 광고<br>운영</td>
-                  <td>네이버 및 Google 키워드 광고 현황 모니터링</td>
-                  <td class="ing">상시 수행</td>
-                  <td class="ctr">-</td>
-                  <td class="ctr">-</td>
-                </tr>
-                <tr>
-                  <td class="grp">전문가 매칭 서비스<br>운영</td>
+                  <td class="grp">전문가 매칭 서비스</td>
                   <td>숨고 견적 요청 확인 및 대응</td>
-                  <td class="ing">상시 수행</td>
+                  <td class="ing">37%</td>
                   <td class="ctr">금액 소진 시</td>
                   <td class="ctr">-</td>
                 </tr>
@@ -378,9 +378,9 @@
         date.setUTCDate(date.getUTCDate() + delta);
         return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(date);
       }
-      function lastWednesday(ymd) {
+      function reportWednesday(ymd) {
         const dow = new Date(`${ymd}T12:00:00+09:00`).getUTCDay();
-        return addDays(ymd, -((dow + 4) % 7));
+        return addDays(ymd, (3 - dow + 7) % 7);
       }
       function weekRange(wed) {
         return { from: addDays(wed, -6), to: wed };
@@ -761,16 +761,17 @@
       }
       function bindWeekNav() {
         const savedMark = weekList.includes(weekId) ? " · 저장됨" : "";
+        const range = weekRange(weekId);
         document.getElementById("periods").innerHTML = `
           <button class="act" id="weekPrev" type="button">◀</button>
           <input type="date" id="weekDate" value="${weekId}" />
           <button class="act" id="weekNext" type="button">▶</button>
-          <span class="wed">${weekId} (수)${savedMark}</span>
+          <span class="wed">${periodTitle(range.from, range.to)}${savedMark}</span>
           ${window.TASSI.isPages ? "" : `<button class="act primary" id="weekSave" type="button">이 주 저장</button>`}
         `;
         document.getElementById("weekPrev").onclick = () => void selectWeek(addDays(weekId, -7));
         document.getElementById("weekNext").onclick = () => void selectWeek(addDays(weekId, 7));
-        document.getElementById("weekDate").onchange = (ev) => void selectWeek(lastWednesday(ev.target.value));
+        document.getElementById("weekDate").onchange = (ev) => void selectWeek(reportWednesday(ev.target.value));
         const saveBtn = document.getElementById("weekSave");
         if (saveBtn) {
           saveBtn.onclick = async () => {
@@ -1122,6 +1123,7 @@
           lead: "padding:5px 0 2px",
           ok: "color:#2ea043;font-weight:bold;text-align:center",
           ing: "color:#e0972d;font-weight:bold;text-align:center",
+          always: "color:#2d5be3;font-weight:bold;text-align:center",
           ctr: "text-align:center",
           grp: "font-weight:bold",
           num: "text-align:right;white-space:nowrap",
@@ -1245,7 +1247,7 @@
       });
 
       async function selectWeek(id) {
-        weekId = lastWednesday(id);
+        weekId = reportWednesday(id);
         const next = new URL(location.href);
         next.searchParams.set("week", weekId);
         history.replaceState({}, "", next);
@@ -1256,10 +1258,17 @@
       }
 
       async function boot() {
-        if (!weekId) weekId = lastWednesday(kstToday());
+        if (!weekId) {
+          weekId = reportWednesday(kstToday());
+          const next = new URL(location.href);
+          next.searchParams.set("week", weekId);
+          history.replaceState({}, "", next);
+        } else {
+          weekId = reportWednesday(weekId);
+        }
         const [index, snap, b, a, s] = await Promise.all([
           window.TASSI.loadWeeksIndex().catch(() => ({ weeks: [] })),
-          window.TASSI.loadWeek(weekId || lastWednesday(kstToday())).catch(() => null),
+          window.TASSI.loadWeek(weekId).catch(() => null),
           window.TASSI.loadJson("report", window.TASSI.api("report")).catch(() => null),
           window.TASSI.loadJson("ads", window.TASSI.api("ads")).catch(() => null),
           window.TASSI.loadService().catch(() => null),
