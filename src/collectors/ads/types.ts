@@ -1,3 +1,5 @@
+import type { AdsDesk } from "./desks.js";
+
 export type Platform = "NAVER" | "GOOGLE";
 
 export type Metric = {
@@ -23,7 +25,12 @@ export type KeywordRow = {
   name: string;
   matchType?: string;
   status?: string;
+  onOff?: boolean;
+  desk?: AdsDesk;
   bid?: number;
+  marketBidVat?: number;
+  marketBidPreset?: string;
+  marketBidAt?: string;
   qualityScore?: string;
   expectedCtr?: string;
   rankHint?: string;
@@ -37,6 +44,7 @@ export type GroupRow = {
   status?: string;
   bid?: number;
   keywords: KeywordRow[];
+  desk?: AdsDesk;
   byDate?: Record<string, DayTuple>;
 } & Metric;
 
@@ -48,6 +56,7 @@ export type CampaignRow = {
   channel?: string;
   dailyBudget?: number;
   groups: GroupRow[];
+  desk?: AdsDesk;
   byDate?: Record<string, DayTuple>;
 } & Metric;
 

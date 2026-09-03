@@ -13,6 +13,8 @@ import {
   listNaverCampaignGroups,
   naverGroupIdFromUrl,
   openFreshPage,
+  readNaverGroupKeywordMaster,
+  scrapeNaverGroupMarketBids,
   setNaverSameDay,
   sleep,
   type NaverCampaignGroupRow,
@@ -31,6 +33,15 @@ type GroupNode = {
   name: string;
   href: string;
   keywordsByDate: Record<string, unknown[]>;
+  master?: Array<{
+    name: string;
+    onOff?: boolean;
+    matchType?: string;
+    bid?: number;
+    marketBidVat?: number;
+    marketBidPreset?: string;
+    marketBidAt?: string;
+  }>;
 };
 type CampNode = { id: string; name: string; href: string; groups: GroupNode[] };
 
@@ -45,6 +56,7 @@ function toScraped(row: NaverExcelKeyword) {
     ctr: row.ctr,
     cpc: row.cpc,
     cost: row.cost,
+    matchType: row.bidType,
     relevanceScore: row.relevanceScore,
     expectedCtr: row.expectedCtr,
     id: row.id,
@@ -176,6 +188,7 @@ async function crawlCampaignWeeks(
       }
       await sleep(2200);
       const rows = await listNaverCampaignGroups(page);
+      for (const row of rows) upsertGroup(camp, row);
       const active = rows.filter(hasNaverGroupTraffic);
       const skipped = rows.filter((row) => !hasNaverGroupTraffic(row));
       console.log(
@@ -222,6 +235,27 @@ async function crawlCampaignWeeks(
   }
 }
 
+async function enrichNaverGroups(page: Page, camp: CampNode, notes: string[]) {
+  for (const group of camp.groups) {
+    try {
+      await openGroupPage(page, camp, group);
+      const master = await readNaverGroupKeywordMaster(page);
+      const snap = await scrapeNaverGroupMarketBids(page);
+      const at = new Date().toISOString();
+      group.master = master.map((row) => ({
+        ...row,
+        marketBidVat: snap.byName[row.name],
+        marketBidPreset: snap.preset || undefined,
+        marketBidAt: snap.byName[row.name] != null ? at : undefined,
+      }));
+      if (!group.master.length) notes.push(`${camp.name} / ${group.name} 키워드 ON/OFF 표를 못 읽었습니다.`);
+      else console.log(`  ${group.name} 키워드 ${group.master.length}개 (ON ${group.master.filter((row) => row.onOff).length})`);
+    } catch (error) {
+      notes.push(`${camp.name} / ${group.name} 키워드 마스터 실패 — ${error instanceof Error ? error.message : error}`);
+    }
+  }
+}
+
 export async function crawlNaverAds(
   context: BrowserContext,
   dateRange: [string, string],
@@ -234,7 +268,7 @@ export async function crawlNaverAds(
   const excelDir = resolve(root, "data/ads-raw/naver-excel");
   ensureDir(excelDir);
 
-  notes.push("캠페인 상세에서 하루 기간을 맞춘 뒤, 표에 노출수와 클릭수가 있는 광고그룹만 엑셀을 받습니다.");
+  notes.push("캠페인 상세에서 하루 기간을 맞춘 뒤 실적 있는 그룹은 엑셀을 받고, 모든 그룹에서 ON/OFF·0건 키워드를 읽습니다.");
   console.log(`네이버 캠페인 ${tree.length}개, ${weeks.length}주 (${dateRange[0]} ~ ${dateRange[1]})`);
 
   for (const camp of tree) {
@@ -245,6 +279,7 @@ export async function crawlNaverAds(
       continue;
     }
     await crawlCampaignWeeks(page, camp, weeks, excelDir, notes, onSave);
+    await enrichNaverGroups(page, camp, notes);
     await page.close().catch(() => undefined);
   }
 
@@ -283,6 +318,7 @@ export function mergeNaverTrees(prev: unknown[] | undefined, next: unknown[]): C
       found.name = group.name || found.name;
       found.href = group.href || found.href;
       found.keywordsByDate = { ...found.keywordsByDate, ...group.keywordsByDate };
+      if (group.master?.length) found.master = group.master;
     }
   }
   return [...camps.values()];

@@ -8,7 +8,9 @@ import { extractSeriesFromJson, mergeSnapshots } from "../tistory/parse.js";
 import { addKstDays, toKstDate } from "../tistory/parse-api.js";
 import type { CaptureFile } from "../tistory/types.js";
 import { applyPostDays, type ListedPost, type PostDayStat } from "../shared/post-days.js";
+import { crawlRange, eachDay, keepDate, kstToday } from "../shared/crawl-range.js";
 import { upsertDailySnapshots, upsertPostsAndStats } from "../../lib/blog-upsert.js";
+import type { DailySnapshot } from "../tistory/types.js";
 
 loadEnv();
 
@@ -39,6 +41,117 @@ async function fetchJson(page: Page, url: string): Promise<unknown | null> {
   } catch {
     return null;
   }
+}
+
+const MONTHS: Record<string, string> = {
+  Jan: "01",
+  Feb: "02",
+  Mar: "03",
+  Apr: "04",
+  May: "05",
+  Jun: "06",
+  Jul: "07",
+  Aug: "08",
+  Sep: "09",
+  Oct: "10",
+  Nov: "11",
+  Dec: "12",
+};
+
+function parseBrunchSelectedDay(text: string): { date: string; views: number } | null {
+  const dateMatch = text.match(/조회수 그래프\s+([A-Za-z]{3})\s+(\d{1,2})\.\s+(\d{4})/);
+  if (!dateMatch) return null;
+  const month = MONTHS[dateMatch[1]];
+  if (!month) return null;
+  const date = `${dateMatch[3]}-${month}-${dateMatch[2].padStart(2, "0")}`;
+  const viewsMatch = text.match(/조회수 그래프[\s\S]{0,500}?조회수\s+(\d+)\s+(?:상승|하락|보합)/);
+  if (!viewsMatch) return null;
+  return { date, views: Number(viewsMatch[1]) };
+}
+
+async function selectDailyGrain(page: Page) {
+  const daily = page.getByText("일간", { exact: true });
+  if (await daily.count()) {
+    await daily.first().click({ timeout: 2000 }).catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
+}
+
+async function clickChartLabel(page: Page, label: string): Promise<boolean> {
+  const viaSvg = await page.evaluate((want) => {
+    const nodes = [...document.querySelectorAll("svg text, svg tspan")];
+    const hits = nodes.filter((node) => (node.textContent ?? "").trim() === want);
+    for (const hit of hits) {
+      const rect = hit.getBoundingClientRect();
+      if (rect.width < 1 && rect.height < 1) continue;
+      const x = rect.x + rect.width / 2;
+      const y = rect.y - 24;
+      const target = document.elementFromPoint(x, y) ?? hit;
+      for (const el of [target, hit, hit.parentElement]) {
+        el?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y }),
+        );
+      }
+      return true;
+    }
+    return false;
+  }, label);
+  if (viaSvg) return true;
+
+  const loc = page.locator("svg text, svg tspan").filter({ hasText: new RegExp(`^${label}$`) });
+  const count = await loc.count();
+  for (let i = 0; i < count; i += 1) {
+    const box = await loc.nth(i).boundingBox();
+    if (!box) continue;
+    await page.mouse.click(box.x + box.width / 2, box.y - 24);
+    return true;
+  }
+  return false;
+}
+
+async function revealChartRange(page: Page, fromDay: string) {
+  for (let i = 0; i < 280; i += 1) {
+    const text = await page.locator("body").innerText().catch(() => "");
+    const parsed = parseBrunchSelectedDay(text);
+    if (parsed && parsed.date >= fromDay) return true;
+    const next = page.getByText("다음 날짜", { exact: true });
+    if (!(await next.count())) return false;
+    await next.first().click({ timeout: 1500 }).catch(() => undefined);
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
+
+async function clickBrunchChartDays(page: Page, fromDay: string, toDay: string, statsUrl: string): Promise<DailySnapshot[]> {
+  await page.goto(statsUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(1500);
+  await selectDailyGrain(page);
+  const revealed = await revealChartRange(page, fromDay);
+  if (!revealed) console.log("브런치 그래프를 수집 기간까지 이동하지 못했습니다.");
+  const today = kstToday();
+  const rows: DailySnapshot[] = [];
+  for (const ymd of eachDay(fromDay, toDay)) {
+    const label = ymd === today ? "오늘" : String(Number(ymd.slice(8, 10)));
+    const clicked = await clickChartLabel(page, label);
+    if (clicked) await page.waitForTimeout(700);
+    const text = await page.locator("body").innerText().catch(() => "");
+    const parsed = parseBrunchSelectedDay(text);
+    const matched = parsed?.date === ymd ? parsed : null;
+    if (!matched) {
+      console.log(`브런치 그래프 ${ymd} 클릭 실패`);
+      continue;
+    }
+    console.log(`브런치 그래프 ${matched.date} 조회수 ${matched.views}`);
+    rows.push({
+      date: matched.date,
+      views: matched.views,
+      sources: [],
+      devices: [],
+      popularPosts: [],
+      inflowKeywords: [],
+    });
+  }
+  return rows;
 }
 
 async function listArticles(page: Page, authorId: string): Promise<{ home: string; posts: ListedPost[] }> {
@@ -82,11 +195,8 @@ async function listArticles(page: Page, authorId: string): Promise<{ home: strin
   return { home, posts };
 }
 
-function windowRange(end: string, size: number): { start: string; end: string } {
-  return { start: addKstDays(end, -(size - 1)), end };
-}
-
 async function main() {
+  const { from, to } = crawlRange();
   const clientSlug = process.env.CLIENT_SLUG?.trim() || "t-assi";
   const clientName = process.env.CLIENT_NAME?.trim() || clientSlug;
   const rawDir = resolve(root, "data/brunch-raw");
@@ -109,58 +219,48 @@ async function main() {
     page,
     async () => {
       const url = page.url();
-      return /@tbell\/stats/.test(url) && !/login|accounts\.kakao/.test(url);
+      return /@tbell\/stats/.test(url) && !/[?&]signin|login|accounts\.kakao/.test(url);
     },
     "크롬 창에서 브런치 통계가 보이게 로그인해 주세요. https://brunch.co.kr/@tbell/stats",
   );
 
-  await page.goto(targets.brunchStatsUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
+  if (!/@tbell\/stats/.test(page.url()) || /[?&]signin/.test(page.url())) {
+    await page.goto(targets.brunchStatsUrl, { waitUntil: "domcontentloaded" });
+    await waitUntil(
+      page,
+      async () => /@tbell\/stats/.test(page.url()) && !/[?&]signin|login|accounts\.kakao/.test(page.url()),
+      "크롬 창에서 브런치 통계가 보이게 로그인해 주세요. https://brunch.co.kr/@tbell/stats",
+    );
+  }
+  await page.waitForTimeout(1500);
 
   const authorId = targets.brunchId || authorFromUrl(page.url()) || "tbell";
   console.log(`브런치 작가: ${authorId}`);
 
-  const { home, posts } = await listArticles(page, authorId);
+  const { home, posts: listed } = await listArticles(page, authorId);
+  const posts = listed.filter((post) => {
+    if (!post.publishedAt) return true;
+    return post.publishedAt.slice(0, 10) >= "2026-07-01";
+  });
   const homeId = home || "iHNj";
-  console.log(`글 ${posts.length}편 — 글별 통계를 엽니다. (home=${homeId})`);
+  console.log(`글 ${listed.length}편 중 7월 이후 ${posts.length}편 (home=${homeId})`);
 
-  const today = toKstDate(new Date());
+  const today = to || from || toKstDate(new Date());
+  const blogStart = from || addKstDays(today, -30);
+  const blogEnd = to || today;
+  const blogDailyUrl = `https://api.brunch.co.kr/v1/stats/brunch/daily?home=${homeId}&start=${blogStart}&end=${blogEnd}`;
+  const blogDaily = await fetchJson(page, blogDailyUrl);
+  networkJson.push({ url: blogDailyUrl, body: blogDaily });
+  if (!blogDaily) {
+    throw new Error("브런치 일별 통계 API가 비었습니다. 통계 페이지에 로그인한 뒤 다시 수집해 주세요.");
+  }
+
+  console.log("브런치 조회수 그래프에서 일자를 눌러 수집합니다.");
+  const clickedDays = await clickBrunchChartDays(page, blogStart, blogEnd, targets.brunchStatsUrl);
+
   const postStats: PostDayStat[] = [];
   const totals: Array<{ id: string; title?: string; total: number }> = [];
-
-  for (const [index, post] of posts.entries()) {
-    console.log(`[${index + 1}/${posts.length}] ${post.title ?? post.externalId}`);
-    let end = today;
-    for (let w = 0; w < 4; w += 1) {
-      const range = windowRange(end, 31);
-      const url = `https://api.brunch.co.kr/v1/stats/article/daily?home=${homeId}&start=${range.start}&end=${range.end}&article=${post.externalId}`;
-      const body = await fetchJson(page, url);
-      networkJson.push({ url, body });
-      const data = isRecord(body) && isRecord(body.data) ? body.data : null;
-      const view = data && isRecord(data.view) ? data.view : null;
-      if (w === 0 && view && typeof view.total === "number") {
-        totals.push({ id: post.externalId, title: post.title, total: view.total });
-      }
-      const list = view && Array.isArray(view.list) ? view.list : [];
-      for (const point of list) {
-        if (!isRecord(point)) continue;
-        postStats.push({
-          externalId: post.externalId,
-          date: String(point.datetime ?? "").slice(0, 10),
-          views: Number(point.cnt ?? 0),
-        });
-      }
-      end = addKstDays(range.start, -1);
-      await page.waitForTimeout(150);
-    }
-  }
-
-  const uniqueStats = new Map<string, PostDayStat>();
-  for (const row of postStats) {
-    if (!row.date) continue;
-    uniqueStats.set(`${row.externalId}|${row.date}`, row);
-  }
-  const collapsed = [...uniqueStats.values()];
+  const collapsed: PostDayStat[] = [];
 
   let snapshots = mergeSnapshots([
     ...networkJson
@@ -186,6 +286,7 @@ async function main() {
     ]);
   }
   snapshots = applyPostDays(snapshots, posts, collapsed);
+  snapshots = mergeSnapshots([...snapshots, ...clickedDays]).filter((row) => keepDate(row.date, from, to));
 
   const capture: CaptureFile = {
     capturedAt: new Date().toISOString(),

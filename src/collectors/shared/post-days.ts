@@ -23,28 +23,36 @@ export function applyPostDays(snapshots: DailySnapshot[], posts: ListedPost[], s
       ...row,
       sources: [...row.sources],
       devices: [...row.devices],
-      popularPosts: [],
+      popularPosts: [...row.popularPosts],
       inflowKeywords: [...row.inflowKeywords],
     });
   }
+  const fromStats = new Map<string, DailySnapshot["popularPosts"]>();
   for (const stat of stats) {
     if (!stat.views) continue;
     const post = meta.get(stat.externalId);
-    const current = byDate.get(stat.date) ?? {
-      date: stat.date,
-      views: 0,
-      sources: [],
-      devices: [],
-      popularPosts: [],
-      inflowKeywords: [],
-    };
-    current.popularPosts.push({
+    const list = fromStats.get(stat.date) ?? [];
+    list.push({
       rank: 0,
       title: post?.title ?? stat.externalId,
       url: post?.url,
       views: stat.views,
     });
-    byDate.set(stat.date, current);
+    fromStats.set(stat.date, list);
+    if (!byDate.has(stat.date)) {
+      byDate.set(stat.date, {
+        date: stat.date,
+        views: 0,
+        sources: [],
+        devices: [],
+        popularPosts: [],
+        inflowKeywords: [],
+      });
+    }
+  }
+  for (const [date, list] of fromStats) {
+    const current = byDate.get(date);
+    if (current) current.popularPosts = list;
   }
   return [...byDate.values()]
     .map((row) => ({

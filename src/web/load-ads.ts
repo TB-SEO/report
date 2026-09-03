@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 import { root } from "../collectors/shared/chrome.js";
@@ -6,7 +6,8 @@ import { parseAdsCapture } from "../collectors/ads/parse.js";
 import type { AdsCaptureFile, AdsReport } from "../collectors/ads/types.js";
 import { defaultRangeKst, eachDay, emptyMetric } from "../collectors/ads/dates.js";
 
-const ADS_PARSE_REV = 3;
+const ADS_PARSE_REV = 6;
+const latestPath = () => join(root, "data/ads-raw/latest.json");
 
 let lastGood: AdsReport | null = null;
 let cache: { rev: number; mtime: number; size: number; report: AdsReport; json: Buffer; gzip: Buffer } | null = null;
@@ -31,7 +32,7 @@ function pack(report: AdsReport) {
 }
 
 export function buildAdsFromLocalFiles(): AdsReport {
-  const latest = join(root, "data/ads-raw/latest.json");
+  const latest = latestPath();
   if (!existsSync(latest)) {
     return lastGood ?? emptyReport("아직 수집본이 없습니다. npm run ads:crawl 을 실행하세요.");
   }
@@ -47,8 +48,18 @@ export async function loadAdsReport(): Promise<AdsReport> {
 }
 
 export async function adsPayload(): Promise<{ report: AdsReport; json: Buffer; gzip: Buffer }> {
-  const { getAppDocument, putAppDocument } = await import("../lib/app-documents.js");
+  const latest = latestPath();
+  if (existsSync(latest)) {
+    const mtime = statSync(latest).mtimeMs;
+    if (cache && cache.rev === ADS_PARSE_REV && cache.mtime === mtime) return cache;
+    const report = buildAdsFromLocalFiles();
+    const packed = pack(report);
+    cache = { rev: ADS_PARSE_REV, mtime, size: packed.json.length, report, ...packed };
+    import("../lib/app-documents.js").then((mod) => mod.putAppDocument("ads", report)).catch(() => undefined);
+    return cache;
+  }
   try {
+    const { getAppDocument } = await import("../lib/app-documents.js");
     const stored = await getAppDocument<AdsReport>("ads");
     if (stored) {
       if (cache && cache.rev === ADS_PARSE_REV && cache.mtime === Date.parse(stored.updatedAt)) return cache;
@@ -57,14 +68,10 @@ export async function adsPayload(): Promise<{ report: AdsReport; json: Buffer; g
       cache = { rev: ADS_PARSE_REV, mtime: Date.parse(stored.updatedAt) || 0, size: packed.json.length, report: stored.payload, ...packed };
       return cache;
     }
-    const report = buildAdsFromLocalFiles();
-    await putAppDocument("ads", report).catch(() => undefined);
-    const packed = pack(report);
-    cache = { rev: ADS_PARSE_REV, mtime: Date.now(), size: packed.json.length, report, ...packed };
-    return cache;
   } catch {
-    const report = lastGood ?? emptyReport("수집 파일을 읽는 중입니다. 잠시 후 새로고침하세요.");
-    const packed = pack(report);
-    return { report, ...packed };
+    // fall through
   }
+  const report = lastGood ?? emptyReport("수집 파일을 읽는 중입니다. 잠시 후 새로고침하세요.");
+  const packed = pack(report);
+  return { report, ...packed };
 }

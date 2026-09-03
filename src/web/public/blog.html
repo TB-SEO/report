@@ -264,7 +264,21 @@
             for (const kw of row.inflowKeywords || []) {
               if (kw.views) bucket.keywords[kw.keyword] = (bucket.keywords[kw.keyword] || 0) + kw.views;
             }
-            for (const post of row.popularPosts || []) bucket.posts.push({ ...post, platform: platform.platform });
+          }
+          for (const post of platform.postDays || []) {
+            if (!post.views) continue;
+            const key = periodKey(post.date);
+            if (!map.has(key)) map.set(key, emptyBucket(key));
+            map.get(key).posts.push({ ...post, platform: platform.platform });
+          }
+          if (!(platform.postDays || []).length) {
+            for (const row of platform.snapshots || []) {
+              const bucket = map.get(periodKey(row.date));
+              if (!bucket) continue;
+              for (const post of row.popularPosts || []) {
+                if (post.views) bucket.posts.push({ ...post, platform: platform.platform });
+              }
+            }
           }
         }
         return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
@@ -347,12 +361,13 @@
         const yMarks = ticks.map((t) => (Number.isInteger(t) ? t : Math.round(t * 10) / 10));
         const sources = entries(selected?.sources || {});
         const keywords = entries(selected?.keywords || {}).slice(0, 10);
-        const periodPosts = Object.values((selected?.posts || []).reduce((acc, post) => {
-          const id = post.url || post.title;
-          if (!acc[id] || (post.views || 0) > (acc[id].views || 0)) acc[id] = post;
+        const posts = Object.values((selected?.posts || []).reduce((acc, post) => {
+          if (!post.views) return acc;
+          const id = `${post.platform || ""}|${post.url || post.title}`;
+          if (!acc[id]) acc[id] = { ...post, views: 0 };
+          acc[id].views += post.views || 0;
           return acc;
-        }, {})).sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 12);
-        const posts = periodPosts;
+        }, {})).sort((a, b) => (b.views || 0) - (a.views || 0));
         const barColor = current === "ALL" ? "" : current;
         const canNewer = chartPage > 0;
         const canOlder = chartPage < pageCount - 1;
@@ -414,16 +429,14 @@
               </table>
             </div>
           </div>
+          <h2>콘텐츠 · ${periodLabel(selected.key)}</h2>
+          <table>
+            <thead><tr><th>글</th><th class="num">조회</th></tr></thead>
+            <tbody>
+              ${posts.length ? posts.map((post) => `<tr><td>${current === "ALL" ? `<span class="tag ${post.platform}">${labels[post.platform]}</span>` : ""}${post.url ? `<a href="${post.url}" target="_blank">${post.title || post.url}</a>` : (post.title || "-")}</td><td class="num">${fmt(post.views)}</td></tr>`).join("") : `<tr><td colspan="2">이 기간 조회가 있는 글이 없습니다.</td></tr>`}
+            </tbody>
+          </table>
           <div class="grid" style="margin-top:20px">
-            <div>
-              <h2>콘텐츠</h2>
-              <table>
-                <thead><tr><th>글</th><th class="num">조회</th></tr></thead>
-                <tbody>
-                  ${posts.length ? posts.map((post) => `<tr><td>${current === "ALL" ? `<span class="tag ${post.platform}">${labels[post.platform]}</span>` : ""}${post.url ? `<a href="${post.url}" target="_blank">${post.title || post.url}</a>` : (post.title || "-")}</td><td class="num">${fmt(post.views)}</td></tr>`).join("") : `<tr><td colspan="2">글 통계가 없습니다.</td></tr>`}
-                </tbody>
-              </table>
-            </div>
             <div>
               <h2>유입 키워드</h2>
               <table>
@@ -433,6 +446,7 @@
                 </tbody>
               </table>
             </div>
+            <div></div>
           </div>
           <div class="meta">${current === "ALL" ? "티스토리 + 벨로그 + 브런치" : (activePlatforms()[0]?.pageUrl || "")}</div>
         `;

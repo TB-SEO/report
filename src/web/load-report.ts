@@ -38,6 +38,7 @@ export type PlatformReport = {
   totalVisitors: number;
   snapshots: DailySnapshot[];
   posts: ReportPost[];
+  postDays?: Array<{ date: string; title?: string; url?: string; views: number }>;
   check: CrawlCheck;
 };
 
@@ -158,9 +159,25 @@ function summarize(
     totalVisitors: snapshots.reduce((sum, row) => sum + (row.visitors ?? 0), 0),
     snapshots,
     posts,
+    postDays: postDaysFromRaw(json),
     check: { expectedUrl: "", ok: false, notes: [] },
   };
   return attachCheck(base);
+}
+
+function postDaysFromRaw(json: RawFile | null | undefined) {
+  const meta = new Map((json?.posts ?? []).map((post) => [post.externalId ?? "", post]));
+  return (json?.postStats ?? [])
+    .filter((row) => row.views)
+    .map((row) => {
+      const post = meta.get(row.externalId);
+      return {
+        date: row.date,
+        title: post?.title,
+        url: post?.url,
+        views: row.views,
+      };
+    });
 }
 
 function reportPostsFromRaw(json: RawFile | null | undefined): ReportPost[] {

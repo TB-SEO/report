@@ -583,6 +583,98 @@ export function hasNaverGroupTraffic(row: NaverCampaignGroupRow) {
   return row.impressions > 0 || row.clicks > 0;
 }
 
+export type NaverKeywordMaster = {
+  name: string;
+  onOff: boolean;
+  matchType?: string;
+  bid?: number;
+};
+
+export async function readNaverGroupKeywordMaster(page: Page): Promise<NaverKeywordMaster[]> {
+  await page.waitForTimeout(800);
+  return page.evaluate(`(() => {
+    const clean = (text) => (text || "").replace(/\\s+/g, " ").trim();
+    const skip = /^(합계|결과|키워드|상태|이름|on\\/?off|노출수|클릭수|대시보드)$/i;
+    const out = [];
+    const seen = new Set();
+    const rows = [...document.querySelectorAll("tr, [role=row]")];
+    for (const row of rows) {
+      if (row.querySelector("[role=columnheader], thead")) continue;
+      const toggle = row.querySelector("[aria-checked]");
+      if (!toggle) continue;
+      const cells = [...row.querySelectorAll("td, [role=gridcell]")].map((el) => clean(el.textContent));
+      const link = clean(row.querySelector("a")?.textContent || "");
+      const name = link || cells.find((cell) => cell && !skip.test(cell) && !/^\\d[\\d,.]*$/.test(cell) && cell.length > 1) || "";
+      if (!name || skip.test(name) || seen.has(name)) continue;
+      seen.add(name);
+      const match = (cells.find((cell) => /확장|구문|완전|정확히|PC|MO|통합/.test(cell)) || "").slice(0, 24);
+      const bidCell = cells.find((cell) => /원$/.test(cell) || /^[\\d,]+$/.test(cell));
+      const bid = bidCell ? Number(String(bidCell).replace(/[,원]/g, "")) : undefined;
+      out.push({
+        name,
+        onOff: toggle.getAttribute("aria-checked") === "true",
+        matchType: match || undefined,
+        bid: Number.isFinite(bid) ? bid : undefined,
+      });
+    }
+    return out;
+  })()`) as Promise<NaverKeywordMaster[]>;
+}
+
+export type NaverMarketBidSnapshot = { preset: string; byName: Record<string, number> };
+
+export async function scrapeNaverGroupMarketBids(page: Page): Promise<NaverMarketBidSnapshot> {
+  const result: NaverMarketBidSnapshot = { preset: "PC 통합 검색 1위 평균 입찰가", byName: {} };
+  const headerToggle = page.locator('[class*="ad-cms-table-selection-column"] [aria-checked], [class*="selection-column"] [role="checkbox"]').first();
+  if (!(await headerToggle.count())) return result;
+  await headerToggle.click({ timeout: 4000 }).catch(() => undefined);
+  await page.waitForTimeout(400);
+  const changeBtn = page.getByText("입찰가 변경", { exact: false }).first();
+  if (!(await changeBtn.count())) return result;
+  await changeBtn.click({ timeout: 4000 }).catch(() => undefined);
+  await page.waitForTimeout(400);
+  const item = page.locator(".ad-cms-dropdown-menu-item, [role=menuitem]").filter({ hasText: /개별/ }).first();
+  if (await item.count()) await item.click({ timeout: 4000 }).catch(() => undefined);
+  await page.waitForTimeout(1200);
+  if (await headerToggle.count()) await headerToggle.click({ timeout: 3000 }).catch(() => undefined);
+  await page.waitForTimeout(400);
+  const select = page.locator(".ad-cms-select").first();
+  if (await select.count()) {
+    await select.click({ timeout: 3000 }).catch(() => undefined);
+    await page.waitForTimeout(400);
+    const opt = page.getByText(/PC\s*통합\s*검색\s*1위\s*평균\s*입찰가/, { exact: false }).first();
+    if (await opt.count()) await opt.click({ timeout: 3000 }).catch(() => undefined);
+  }
+  const lookup = page.getByRole("button", { name: /조회/ }).first();
+  if (await lookup.count()) await lookup.click({ timeout: 4000 }).catch(() => undefined);
+  await page.waitForTimeout(1500);
+  const scraped = (await page.evaluate(`(() => {
+    const clean = (text) => (text || "").replace(/\\s+/g, " ").trim();
+    const num = (text) => Number(String(text || "").replace(/[,원\\s]/g, ""));
+    const headers = [...document.querySelectorAll("th, [role=columnheader]")].map((el) => clean(el.textContent));
+    const vatIdx = headers.findIndex((h) => /변경할\\s*입찰가/.test(h) || (/VAT/.test(h) && /입찰/.test(h)));
+    const presetEl = [...document.querySelectorAll(".ad-cms-select, [class*='select']")].map((el) => clean(el.textContent)).find((t) => /입찰가|1위|2위/.test(t)) || "";
+    const map = {};
+    const rows = [...document.querySelectorAll("tr, [role=row]")];
+    for (const row of rows) {
+      const cells = [...row.querySelectorAll("td, [role=gridcell]")].map((el) => clean(el.textContent));
+      if (cells.length < 2) continue;
+      const name = clean(row.querySelector("a")?.textContent || "") || cells.find((cell) => cell && !/원$/.test(cell) && !/^[\\d,]+$/.test(cell) && cell.length > 1);
+      const bidCell = vatIdx >= 0 ? cells[vatIdx] : [...cells].reverse().find((cell) => /원$/.test(cell) || /^[\\d,]+$/.test(cell));
+      const bid = num(bidCell);
+      if (name && Number.isFinite(bid) && bid > 0) map[name] = bid;
+    }
+    return { preset: presetEl, map };
+  })()`)) as { preset?: string; map?: Record<string, number> };
+  if (scraped.preset) result.preset = scraped.preset.slice(0, 80);
+  Object.assign(result.byName, scraped.map || {});
+  await page.keyboard.press("Escape").catch(() => undefined);
+  const cancel = page.getByRole("button", { name: /취소|닫기/ }).first();
+  if (await cancel.count()) await cancel.click({ timeout: 2000 }).catch(() => undefined);
+  await page.waitForTimeout(400);
+  return result;
+}
+
 let conversionsColumnReady = false;
 
 export async function ensureNaverTotalConversionsColumn(page: Page, force = false) {

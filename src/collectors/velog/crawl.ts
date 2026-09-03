@@ -5,6 +5,7 @@ import type { Page, Response } from "playwright";
 import { pageOn, releaseChrome, openPersistentChrome, waitUntil, root, ensureDir } from "../shared/chrome.js";
 import { blogTargets } from "../shared/targets.js";
 import type { CaptureFile, DailySnapshot } from "../tistory/types.js";
+import { crawlRange, keepDate } from "../shared/crawl-range.js";
 import { upsertDailySnapshots, upsertPostsAndStats } from "../../lib/blog-upsert.js";
 
 loadEnv();
@@ -154,6 +155,7 @@ async function collectStatsFromUi(page: Page, username: string, post: VelogPost)
 }
 
 async function main() {
+  const { from, to } = crawlRange();
   const clientSlug = process.env.CLIENT_SLUG?.trim() || "t-assi";
   const clientName = process.env.CLIENT_NAME?.trim() || clientSlug;
   const targets = blogTargets();
@@ -230,6 +232,7 @@ async function main() {
       }
       for (const point of days) {
         const date = String(point.day).slice(0, 10);
+        if (!keepDate(date, from, to)) continue;
         postStats.push({
           externalId: post.id,
           date,
@@ -247,7 +250,9 @@ async function main() {
     await page.waitForTimeout(400);
   }
 
-  const snapshots = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const snapshots = [...byDate.values()]
+    .filter((row) => keepDate(row.date, from, to))
+    .sort((a, b) => a.date.localeCompare(b.date));
   const capture: CaptureFile = {
     capturedAt: new Date().toISOString(),
     pageUrl: page.url(),

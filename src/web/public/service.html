@@ -133,6 +133,39 @@
       .num { text-align: right; white-space: nowrap; }
       .mono { font-size: 12px; color: var(--muted); word-break: break-all; }
       .empty { color: var(--muted); padding: 24px 0; }
+      .section-head .icon-btn { flex: none; }
+      .icon-btn {
+        width: 32px; height: 32px; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--hairline); border-radius: 4px;
+        background: #fff; color: var(--fg);
+      }
+      .icon-btn:hover, .icon-btn:focus-visible { border-color: var(--action); color: var(--action); outline: none; }
+      .ico { display: block; }
+      .ico path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .more { color: var(--muted); font-size: 13px; line-height: 18px; margin: 8px 0 0; }
+      .period-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+      .period-row .period-label { margin: 0; }
+      .drawer { display: none; }
+      .drawer.on { display: block; }
+      .drawer-backdrop {
+        position: fixed; inset: 0; background: rgba(27, 31, 39, 0.4); z-index: 80;
+      }
+      .drawer-panel {
+        position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%);
+        background: #fff; z-index: 81; overflow: auto;
+        box-shadow: -12px 0 32px rgba(15, 23, 42, 0.12);
+        padding: 20px 20px 48px;
+      }
+      .drawer-head {
+        display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+        position: sticky; top: -20px; margin: -20px -20px 16px; padding: 20px 20px 12px;
+        background: #fff; border-bottom: 1px solid var(--hairline);
+      }
+      .drawer-head h2 { margin: 0; font-size: 18px; line-height: 24px; }
+      .drawer-head .sub { color: var(--muted); font-size: 13px; line-height: 18px; margin-top: 4px; font-weight: 400; }
+      .drawer-panel h3 { font-size: 15px; line-height: 22px; font-weight: 700; margin: 22px 0 10px; color: var(--fg); }
+      body.drawer-on { overflow: hidden; }
       @media (max-width: 900px) {
         .cards, .grid { grid-template-columns: 1fr 1fr; }
       }
@@ -145,7 +178,6 @@
     <div class="wrap">
       <div class="kicker">ShipType 시뮬레이터 · <a href="https://shiptype.scoopurl.co.kr/">라이브</a></div>
       <h1>서비스 이용자 현황</h1>
-      <p class="note" id="note"></p>
       <div class="units" id="units"></div>
       <div class="cards" id="cards"></div>
       <div class="section-head">
@@ -163,14 +195,39 @@
           <div id="results"></div>
         </div>
       </div>
-      <h2>유입 (방문 경로 · UTM)</h2>
+      <div class="section-head">
+        <h2>유입</h2>
+        <button type="button" class="icon-btn" data-drawer="sources" aria-label="유입 상세 보기"></button>
+      </div>
       <div id="sources"></div>
-      <h2>브라우저 (visitor_id)</h2>
+      <div class="section-head">
+        <h2>브라우저</h2>
+        <button type="button" class="icon-btn" data-drawer="browsers" aria-label="브라우저 상세 보기"></button>
+      </div>
       <div id="browsers"></div>
-      <h2>IP 단위</h2>
+      <div class="section-head">
+        <h2>IP 단위</h2>
+        <button type="button" class="icon-btn" data-drawer="ips" aria-label="IP 상세 보기"></button>
+      </div>
       <div id="ips"></div>
-      <h2>최근 이벤트</h2>
+      <div class="section-head">
+        <h2>최근 이벤트</h2>
+        <button type="button" class="icon-btn" data-drawer="timeline" aria-label="이벤트 상세 보기"></button>
+      </div>
       <div id="timeline"></div>
+    </div>
+    <div class="drawer" id="drawer" hidden>
+      <div class="drawer-backdrop" id="drawerBackdrop"></div>
+      <aside class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+        <div class="drawer-head">
+          <div>
+            <h2 id="drawerTitle">상세</h2>
+            <div class="sub" id="drawerSub"></div>
+          </div>
+          <button type="button" class="icon-btn" id="drawerClose" aria-label="닫기"></button>
+        </div>
+        <div id="drawerBody"></div>
+      </aside>
     </div>
     <script src="site.js"></script>
     <script src="nav.js"></script>
@@ -189,14 +246,21 @@
       const SERIES = ["visit", "start", "result"];
       const grainLabels = { day: "일간", week: "주간", month: "월간" };
       const PAGE_SIZE = 14;
+      const SUMMARY_ROWS = 5;
       const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
       const dash = (v) => (v == null || v === "" ? "—" : v);
       const shortId = (id) => String(id || "").slice(0, 8);
+      const ICO = {
+        chevron: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+        close: '<svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+      };
       let report = null;
       let unit = "browser";
       let grain = "day";
       let selectedKey = null;
       let chartPage = 0;
+      let drawerOpen = false;
+      let drawerSection = "sources";
 
       function shortDay(ymd) {
         const [, m, d] = (ymd || "").split("-");
@@ -253,21 +317,170 @@
       function emptyBucket(key) {
         return { key, visit: 0, start: 0, result: 0 };
       }
-      function table(headers, rows, empty) {
+      function table(headers, rows, empty, more) {
         if (!rows.length) return `<p class="empty">${empty}</p>`;
         return `<table><thead><tr>${headers.map((h) => `<th${h.num ? ' class="num"' : ""}>${h.label}</th>`).join("")}</tr></thead>
-          <tbody>${rows.map((row) => `<tr>${row.join("")}</tr>`).join("")}</tbody></table>`;
+          <tbody>${rows.map((row) => `<tr>${row.join("")}</tr>`).join("")}</tbody></table>${more ? `<p class="more">${more}</p>` : ""}`;
       }
       function personKey(event) {
         if (unit === "ip") return event.lastIpMasked || event.clientIpMasked || "";
         return event.visitorId;
+      }
+      function inPeriod(ymd, key) {
+        return ymd && periodKey(ymd) === key;
+      }
+      function moreText(total, shown, unitLabel) {
+        const rest = total - shown;
+        if (rest <= 0) return "";
+        return `외 ${fmt(rest)}${unitLabel}`;
+      }
+      function groupRecent(events, limit) {
+        const groups = [];
+        for (const e of events) {
+          const last = groups[groups.length - 1];
+          if (last && last.visitorId === e.visitorId) last.items.push(e);
+          else {
+            if (limit && groups.length >= limit) break;
+            groups.push({ visitorId: e.visitorId, items: [e] });
+          }
+        }
+        return groups;
+      }
+      function timelineRows(groups) {
+        return groups.map((group) => {
+          const e = group.items[0];
+          const n = group.items.length;
+          const label = LABELS[e.eventName] || e.eventName;
+          const result = group.items.find((row) => row.resultName)?.resultName;
+          const play = group.items.find((row) => row.playId)?.playId;
+          return [
+            `<td>${new Date(e.occurredAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
+            `<td>${label}${n > 1 ? ` + ${n}건` : ""}</td>`,
+            `<td>${dash(result)}</td>`,
+            `<td class="mono">${shortId(e.visitorId)}</td>`,
+            `<td class="mono">${play ? shortId(play) : "—"}</td>`,
+            `<td>${window.TASSI.landingPathHtml(e.firstLandingPath || e.landingPath)}</td>`,
+            `<td class="mono">${dash(e.clientIpMasked || e.lastIpMasked)}</td>`,
+          ];
+        });
+      }
+      function sourceRowsFromVisitors(list) {
+        const srcMap = new Map();
+        for (const v of list) {
+          const key = [
+            v.firstLandingPath || "(없음)",
+            v.firstUtmSource || "(UTM 없음)",
+            v.firstUtmCampaign || "—",
+            v.firstUtmContent || "—",
+          ].join("\t");
+          srcMap.set(key, (srcMap.get(key) || 0) + 1);
+        }
+        return [...srcMap.entries()].sort((a, b) => b[1] - a[1]).map(([key, n]) => {
+          const [path, s, c, t] = key.split("\t");
+          return [`<td>${window.TASSI.landingPathHtml(path, "(없음)")}</td>`, `<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
+        });
+      }
+      function browserRows(list) {
+        return list.map((v) => [
+          `<td class="mono">${shortId(v.id)}</td>`,
+          `<td>${window.TASSI.landingPathHtml(v.firstLandingPath)}</td>`,
+          `<td class="mono">${dash(v.lastIpMasked)}</td>`,
+          `<td class="num">${fmt(v.eventCount)}</td>`,
+          `<td>${new Date(v.lastSeenAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
+        ]);
+      }
+      function ipRowsFromVisitors(list) {
+        const ipMap = new Map();
+        for (const v of list) {
+          if (!v.lastIpMasked) continue;
+          const cur = ipMap.get(v.lastIpMasked) || { browsers: 0, events: 0 };
+          cur.browsers += 1;
+          cur.events += v.eventCount;
+          ipMap.set(v.lastIpMasked, cur);
+        }
+        return [...ipMap.entries()].sort((a, b) => b[1].browsers - a[1].browsers).map(([ip, row]) => [
+          `<td class="mono">${ip}</td>`,
+          `<td class="num">${fmt(row.browsers)}</td>`,
+          `<td class="num">${fmt(row.events)}</td>`,
+        ]);
+      }
+      function periodSlice(events, visitors, key) {
+        const dayEvents = events.filter((e) => inPeriod(e.date, key));
+        const ids = new Set(dayEvents.map((e) => e.visitorId));
+        const dayVisitors = visitors.filter((v) => ids.has(v.id));
+        return { dayEvents, dayVisitors };
+      }
+      function bindDrawerButtons() {
+        document.querySelectorAll("[data-drawer]").forEach((btn) => {
+          if (!btn.innerHTML.trim()) btn.innerHTML = ICO.chevron;
+          btn.onclick = () => openDrawer(btn.dataset.drawer);
+        });
+        const close = document.getElementById("drawerClose");
+        close.innerHTML = ICO.close;
+        close.onclick = closeDrawer;
+        document.getElementById("drawerBackdrop").onclick = closeDrawer;
+      }
+      function openDrawer(section) {
+        drawerOpen = true;
+        drawerSection = section || "sources";
+        fillDrawer();
+        const el = document.getElementById("drawer");
+        el.hidden = false;
+        el.classList.add("on");
+        document.body.classList.add("drawer-on");
+        const target = document.getElementById(`drawer-${drawerSection}`);
+        if (target) target.scrollIntoView({ block: "start" });
+      }
+      function closeDrawer() {
+        drawerOpen = false;
+        const el = document.getElementById("drawer");
+        el.hidden = true;
+        el.classList.remove("on");
+        document.body.classList.remove("drawer-on");
+      }
+      function fillDrawer() {
+        if (!report || !selectedKey) return;
+        const events = report.events || [];
+        const visitors = report.visitors || [];
+        const { dayEvents, dayVisitors } = periodSlice(events, visitors, selectedKey);
+        const src = sourceRowsFromVisitors(dayVisitors);
+        const browsers = [...dayVisitors].sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)));
+        const ips = ipRowsFromVisitors(dayVisitors);
+        const groups = groupRecent(dayEvents);
+        document.getElementById("drawerTitle").textContent = `${periodLabel(selectedKey)} 상세`;
+        document.getElementById("drawerSub").textContent = `이벤트 ${fmt(dayEvents.length)} · 브라우저 ${fmt(dayVisitors.length)}`;
+        document.getElementById("drawerBody").innerHTML = `
+          <h3 id="drawer-sources">유입</h3>
+          ${table(
+            [{ label: "방문 경로" }, { label: "source" }, { label: "campaign" }, { label: "content" }, { label: "브라우저", num: true }],
+            src,
+            "유입 기록이 없습니다.",
+          )}
+          <h3 id="drawer-browsers">브라우저</h3>
+          ${table(
+            [{ label: "visitor" }, { label: "방문 경로" }, { label: "IP" }, { label: "이벤트", num: true }, { label: "마지막" }],
+            browserRows(browsers),
+            "브라우저 방문자가 없습니다.",
+          )}
+          <h3 id="drawer-ips">IP 단위</h3>
+          ${table(
+            [{ label: "IP (마스킹)" }, { label: "브라우저", num: true }, { label: "이벤트", num: true }],
+            ips,
+            "IP 기록이 없습니다.",
+          )}
+          <h3 id="drawer-timeline">이벤트</h3>
+          ${table(
+            [{ label: "시각" }, { label: "이벤트" }, { label: "결과" }, { label: "visitor" }, { label: "play" }, { label: "방문 경로" }, { label: "IP" }],
+            timelineRows(groups),
+            "이벤트가 없습니다.",
+          )}
+        `;
       }
 
       function render() {
         const events = report.events || [];
         const visitors = report.visitors || [];
         const stats = report.stats || {};
-        document.getElementById("note").textContent = (report.notes || []).join(" ");
         document.getElementById("units").innerHTML = [
           ["browser", "집계: 브라우저"],
           ["ip", "집계: IP"],
@@ -322,7 +535,10 @@
         const canNewer = chartPage > 0;
         const canOlder = chartPage < pageCount - 1;
         document.getElementById("chart").innerHTML = `
-          <div class="period-label">${periodLabel(selected.key)} · 인트로 ${fmt(selected.visit)} · /play ${fmt(selected.start)} · 결과 ${fmt(selected.result)}</div>
+          <div class="period-row">
+            <div class="period-label">${periodLabel(selected.key)} · 인트로 ${fmt(selected.visit)} · /play ${fmt(selected.start)} · 결과 ${fmt(selected.result)}</div>
+            <button type="button" class="icon-btn" data-drawer="timeline" aria-label="이 기간 상세 보기">${ICO.chevron}</button>
+          </div>
           <div class="legend">
             <span><i style="background:${COLORS.visit}"></i>인트로 (/)</span>
             <span><i style="background:${COLORS.start}"></i>/play 진입</span>
@@ -384,92 +600,49 @@
           "아직 결과 이벤트가 없습니다.",
         );
 
-        const srcMap = new Map();
-        for (const v of visitors) {
-          const key = [
-            v.firstLandingPath || "(없음)",
-            v.firstUtmSource || "(UTM 없음)",
-            v.firstUtmCampaign || "—",
-            v.firstUtmContent || "—",
-          ].join("\t");
-          srcMap.set(key, (srcMap.get(key) || 0) + 1);
-        }
-        const srcRows = [...srcMap.entries()].sort((a, b) => b[1] - a[1]);
+        const srcAll = sourceRowsFromVisitors(visitors);
         document.getElementById("sources").innerHTML = table(
           [{ label: "방문 경로" }, { label: "source" }, { label: "campaign" }, { label: "content" }, { label: "브라우저", num: true }],
-          srcRows.map(([key, n]) => {
-            const [path, s, c, t] = key.split("\t");
-            return [`<td>${window.TASSI.landingPathHtml(path, "(없음)")}</td>`, `<td>${s}</td>`, `<td>${c}</td>`, `<td>${t}</td>`, `<td class="num">${fmt(n)}</td>`];
-          }),
+          srcAll.slice(0, SUMMARY_ROWS),
           "유입 기록이 없습니다.",
+          moreText(srcAll.length, Math.min(SUMMARY_ROWS, srcAll.length), "개 경로"),
         );
 
+        const browsersSorted = [...visitors].sort((a, b) => String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)));
         document.getElementById("browsers").innerHTML = table(
           [{ label: "visitor" }, { label: "방문 경로" }, { label: "IP" }, { label: "이벤트", num: true }, { label: "마지막" }],
-          visitors.map((v) => [
-            `<td class="mono">${shortId(v.id)}</td>`,
-            `<td>${window.TASSI.landingPathHtml(v.firstLandingPath)}</td>`,
-            `<td class="mono">${dash(v.lastIpMasked)}</td>`,
-            `<td class="num">${fmt(v.eventCount)}</td>`,
-            `<td>${new Date(v.lastSeenAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
-          ]),
+          browserRows(browsersSorted.slice(0, SUMMARY_ROWS)),
           "브라우저 방문자가 없습니다.",
+          moreText(browsersSorted.length, Math.min(SUMMARY_ROWS, browsersSorted.length), "명"),
         );
 
-        const ipMap = new Map();
-        for (const v of visitors) {
-          if (!v.lastIpMasked) continue;
-          const cur = ipMap.get(v.lastIpMasked) || { browsers: 0, events: 0 };
-          cur.browsers += 1;
-          cur.events += v.eventCount;
-          ipMap.set(v.lastIpMasked, cur);
-        }
-        const ipRows = [...ipMap.entries()].sort((a, b) => b[1].browsers - a[1].browsers);
+        const ipAll = ipRowsFromVisitors(visitors);
         document.getElementById("ips").innerHTML = table(
           [{ label: "IP (마스킹)" }, { label: "브라우저", num: true }, { label: "이벤트", num: true }],
-          ipRows.map(([ip, row]) => [
-            `<td class="mono">${ip}</td>`,
-            `<td class="num">${fmt(row.browsers)}</td>`,
-            `<td class="num">${fmt(row.events)}</td>`,
-          ]),
-          "IP가 있는 이벤트가 없습니다. 배포 전·로컬은 비어 있는 것이 정상입니다.",
+          ipAll.slice(0, SUMMARY_ROWS),
+          "IP 기록이 없습니다.",
+          moreText(ipAll.length, Math.min(SUMMARY_ROWS, ipAll.length), "개"),
         );
 
-        const recentGroups = [];
-        for (const e of events) {
-          const last = recentGroups[recentGroups.length - 1];
-          if (last && last.visitorId === e.visitorId) last.items.push(e);
-          else {
-            if (recentGroups.length >= 100) break;
-            recentGroups.push({ visitorId: e.visitorId, items: [e] });
-          }
-        }
+        const recentGroups = groupRecent(events);
         document.getElementById("timeline").innerHTML = table(
           [{ label: "시각" }, { label: "이벤트" }, { label: "결과" }, { label: "visitor" }, { label: "play" }, { label: "방문 경로" }, { label: "IP" }],
-          recentGroups.map((group) => {
-            const e = group.items[0];
-            const n = group.items.length;
-            const label = LABELS[e.eventName] || e.eventName;
-            const result = group.items.find((row) => row.resultName)?.resultName;
-            const play = group.items.find((row) => row.playId)?.playId;
-            return [
-              `<td>${new Date(e.occurredAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</td>`,
-              `<td>${label}${n > 1 ? ` + ${n}건` : ""}</td>`,
-              `<td>${dash(result)}</td>`,
-              `<td class="mono">${shortId(e.visitorId)}</td>`,
-              `<td class="mono">${play ? shortId(play) : "—"}</td>`,
-              `<td>${window.TASSI.landingPathHtml(e.firstLandingPath || e.landingPath)}</td>`,
-              `<td class="mono">${dash(e.clientIpMasked || e.lastIpMasked)}</td>`,
-            ];
-          }),
+          timelineRows(recentGroups.slice(0, SUMMARY_ROWS)),
           "이벤트가 없습니다.",
+          moreText(recentGroups.length, Math.min(SUMMARY_ROWS, recentGroups.length), "건"),
         );
+
+        bindDrawerButtons();
+        if (drawerOpen) fillDrawer();
       }
 
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && drawerOpen) closeDrawer();
+      });
       window.TASSI.loadService()
         .then((data) => { report = data; render(); })
         .catch((err) => {
-          document.getElementById("note").textContent = err.message || "불러오지 못했습니다.";
+          document.getElementById("cards").innerHTML = `<p class="empty">${err.message || "불러오지 못했습니다."}</p>`;
         });
     </script>
   </body>

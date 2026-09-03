@@ -1,5 +1,6 @@
 import type { AdsCaptureFile, AdsReport, CampaignRow, DailyPoint, DayTuple, GroupRow, KeywordRow, Metric, Platform, PlatformCapture } from "./types.js";
 import { defaultRangeKst, eachDay, emptyMetric, sumMetrics } from "./dates.js";
+import { assignDesk } from "./desks.js";
 import { loadNaverCatalog } from "./catalog.js";
 
 type Rec = Record<string, unknown>;
@@ -266,6 +267,8 @@ type ScrapedMetric = {
   qualityScore?: string;
   expectedCtr?: string;
   relevanceScore?: string;
+  onOff?: boolean;
+  marketBidVat?: number;
 };
 
 function skipName(name?: string) {
@@ -410,7 +413,24 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
   if (!Array.isArray(body) || !body.length) return null;
   const dayMap = new Map<string, Metric>();
   const campaigns: CampaignRow[] = [];
-  for (const camp of body as Array<{ id: string; name: string; groups?: Array<{ id: string; name: string; keywordsByDate?: Record<string, ScrapedMetric[]> }> }>) {
+  for (const camp of body as Array<{
+    id: string;
+    name: string;
+    groups?: Array<{
+      id: string;
+      name: string;
+      keywordsByDate?: Record<string, ScrapedMetric[]>;
+      master?: Array<{
+        name: string;
+        onOff?: boolean;
+        matchType?: string;
+        bid?: number;
+        marketBidVat?: number;
+        marketBidPreset?: string;
+        marketBidAt?: string;
+      }>;
+    }>;
+  }>) {
     const groups: GroupRow[] = [];
     for (const group of camp.groups ?? []) {
       const byName = new Map<string, KeywordRow>();
@@ -434,11 +454,15 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
           const cost = num(cells[idx("총비용")]) ?? row.cost ?? Math.round(clicks * cpc);
           const conversions = num(cells[idx("총전환수")]) ?? num(cells[idx("전환수")]) ?? row.conversions ?? 0;
           const status = (idx("상태") >= 0 ? cells[idx("상태")] : "") || row.status;
+          const matchType = row.matchType;
           const prev = byName.get(name) ?? {
             id: `${group.id}-${name}`,
             name,
             status,
+            matchType,
             bid: row.bid,
+            onOff: row.onOff,
+            marketBidVat: row.marketBidVat,
             impressions: 0,
             clicks: 0,
             cost: 0,
@@ -469,6 +493,26 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
           cpc: 0,
         });
       }
+      for (const item of group.master ?? []) {
+        if (skipName(item.name) || !item.name) continue;
+        const prev = byName.get(item.name) ?? {
+          id: `${group.id}-${item.name}`,
+          name: item.name,
+          impressions: 0,
+          clicks: 0,
+          cost: 0,
+          conversions: 0,
+          ctr: 0,
+          cpc: 0,
+        };
+        if (item.onOff != null) prev.onOff = item.onOff;
+        if (item.matchType) prev.matchType = item.matchType;
+        if (item.bid) prev.bid = item.bid;
+        if (item.marketBidVat) prev.marketBidVat = item.marketBidVat;
+        if (item.marketBidPreset) prev.marketBidPreset = item.marketBidPreset;
+        if (item.marketBidAt) prev.marketBidAt = item.marketBidAt;
+        byName.set(item.name, prev);
+      }
       const keywords = [...byName.values()].map((kw) => ({
         ...kw,
         ctr: kw.impressions ? (kw.clicks / kw.impressions) * 100 : 0,
@@ -497,6 +541,24 @@ function parseNaverTree(body: unknown, range: [string, string]): { campaigns: Ca
     metric.cpc = metric.clicks ? metric.cost / metric.clicks : 0;
   }
   return { campaigns: named, days: dayMap };
+}
+
+function applyDesks(campaigns: CampaignRow[]): CampaignRow[] {
+  return campaigns.map((camp) => {
+    const groups = camp.groups.map((group) => {
+      const desk = assignDesk(camp.name, camp.id, group.name, group.id);
+      return {
+        ...group,
+        desk,
+        keywords: group.keywords.map((kw) => ({ ...kw, desk })),
+      };
+    });
+    return {
+      ...camp,
+      desk: groups[0]?.desk ?? assignDesk(camp.name, camp.id),
+      groups,
+    };
+  });
 }
 
 function headerKey(header: string) {
@@ -588,7 +650,24 @@ function parseGoogleByDate(
       }
       let kw = group.keywords.find((k) => k.name === name && (k.matchType || "") === (matchType || ""));
       if (!kw) {
-        kw = { id: `${group.id}-${name}-${matchType}`, name, matchType: matchType || undefined, status: row.status, impressions: 0, clicks: 0, cost: 0, conversions: 0, ctr: 0, cpc: 0 };
+        const status = row.status || (headers.length ? googleCell(headers, cells, /상태/, /status/i) : "");
+        kw = {
+          id: `${group.id}-${name}-${matchType}`,
+          name,
+          matchType: matchType || undefined,
+          status: status || undefined,
+          onOff: /enabled|사용함|활성|eligible/i.test(status)
+            ? true
+            : /paused|중지|제거|removed|disabled/i.test(status)
+              ? false
+              : undefined,
+          impressions: 0,
+          clicks: 0,
+          cost: 0,
+          conversions: 0,
+          ctr: 0,
+          cpc: 0,
+        };
         group.keywords.push(kw);
       }
       kw.impressions += impressions;
@@ -654,8 +733,8 @@ export function parseAdsCapture(raw: AdsCaptureFile): AdsReport {
     capturedAt: raw.capturedAt,
     dateRange,
     days,
-    campaigns: [...naver.campaigns, ...google.campaigns],
-    notes: [...notes, ...raw.naver.notes, ...raw.google.notes],
+    campaigns: applyDesks([...naver.campaigns, ...google.campaigns]),
+    notes,
     naver: { pageUrl: raw.naver.pageUrl, loggedIn: raw.naver.loggedIn, notes: raw.naver.notes },
     google: { pageUrl: raw.google.pageUrl, loggedIn: raw.google.loggedIn, notes: raw.google.notes },
   };

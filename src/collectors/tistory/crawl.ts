@@ -9,13 +9,9 @@ import { ensureDir, loadConfig, withBlog, type AppConfig } from "./config.js";
 import { parseTistoryNetwork, addKstDays, toKstDate } from "./parse-api.js";
 import type { CaptureFile } from "./types.js";
 import { applyPostDays, type ListedPost, type PostDayStat } from "../shared/post-days.js";
+import { crawlRange, eachDay, keepDate } from "../shared/crawl-range.js";
 
 loadEnv();
-
-function argValue(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
-}
 
 async function safeJson(response: Response): Promise<unknown | null> {
   const type = response.headers()["content-type"] ?? "";
@@ -144,7 +140,9 @@ async function clickVisibleDates(page: Page, snapshots: DailySnapshot[]) {
 
 async function main() {
   let cfg = loadConfig();
-  const days = Number(argValue("days") ?? "90");
+  const { from, to } = crawlRange();
+  const today = to || from || toKstDate(new Date());
+  const days = from && to ? Math.max(1, Math.ceil((Date.parse(`${to}T12:00:00+09:00`) - Date.parse(`${from}T12:00:00+09:00`)) / 86400000) + 1) : Number(process.argv.find((arg) => arg.startsWith("--days="))?.slice(7) ?? "90");
   ensureDir(cfg.rawDir);
 
   const targets = blogTargets();
@@ -173,7 +171,7 @@ async function main() {
   await waitForLogin(page);
   cfg = await resolveBlog(page, cfg);
 
-  const today = toKstDate(new Date());
+  if (from && to) console.log(`수집 기간 ${from} ~ ${to}`);
   const base = `${cfg.blogUrl}/manage/v2/statistics/blog`;
   if (!/manage\/statistics\/blog/.test(page.url())) {
     await page.goto(targets.tistoryStatsUrl, {
@@ -209,13 +207,17 @@ async function main() {
   };
 
   await fetchJson(`${base}/count`);
+  const windowStart = from || today;
   for (let offset = 0; offset < days; offset += 21) {
-    const startDate = addKstDays(today, -offset);
+    const startDate = addKstDays(windowStart, -offset);
     await fetchJson(`${base}/trend?granularity=day&metric=pv&startDate=${startDate}`);
     await fetchJson(`${base}/trend?granularity=day&metric=uv&startDate=${startDate}`);
   }
 
-  const dates = parseTistoryNetwork(networkJson).map((row) => row.date);
+  const parsedDates = parseTistoryNetwork(networkJson).map((row) => row.date);
+  const dates = [...new Set([...(from && to ? eachDay(from, to) : parsedDates), ...parsedDates])].filter((date) =>
+    keepDate(date, from, to),
+  );
   for (const date of dates) {
     await fetchJson(`${base}/inflow?granularity=day&metric=pv&startDate=${date}`);
     await fetchJson(`${base}/topEntry?metric=pv&startDate=${date}&granularity=day`);
@@ -260,7 +262,7 @@ async function main() {
     if (baseData?.title && !post.title) post.title = baseData.title;
     if (baseData?.permalink) post.url = baseData.permalink;
     for (let offset = 0; offset < days; offset += 21) {
-      const startDate = addKstDays(today, -offset);
+      const startDate = addKstDays(windowStart, -offset);
       const trendBody = await fetchJson(
         `${entryBase}/trend?startDate=${startDate}&granularity=day&entryId=${post.externalId}&metric=pv`,
       );
@@ -280,9 +282,14 @@ async function main() {
   }
 
   const uniqueStats = new Map<string, PostDayStat>();
-  for (const row of postStats) uniqueStats.set(`${row.externalId}|${row.date}`, row);
+  for (const row of postStats) {
+    if (!keepDate(row.date, from, to)) continue;
+    uniqueStats.set(`${row.externalId}|${row.date}`, row);
+  }
   const collapsed = [...uniqueStats.values()];
-  const merged = applyPostDays(parseTistoryNetwork(networkJson), posts, collapsed);
+  const merged = applyPostDays(parseTistoryNetwork(networkJson), posts, collapsed).filter(
+    (row) => keepDate(row.date, from, to),
+  );
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outFile = resolve(cfg.rawDir, `${cfg.blogUserId || "tistory"}-${stamp}.json`);
   const capture: CaptureFile = {
