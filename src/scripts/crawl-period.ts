@@ -18,6 +18,17 @@ function run(script: string, args: string[], env: NodeJS.ProcessEnv = process.en
   });
 }
 
+async function step(name: string, fn: () => Promise<void>) {
+  console.log(`\n===== ${name} =====`);
+  try {
+    await fn();
+  } catch (error) {
+    console.error(`${name} 실패:`, error instanceof Error ? error.message : error);
+    return false;
+  }
+  return true;
+}
+
 async function main() {
   const { from, to } = crawlRange();
   if (!from || !to) {
@@ -26,19 +37,23 @@ async function main() {
   const span = [`--from=${from}`, `--to=${to}`];
   console.log(`블로그 · 검색광고 수집 ${from} ~ ${to}`);
 
-  console.log("\n===== tistory =====");
-  await run("src/collectors/tistory/crawl.ts", span);
-  console.log("\n===== velog =====");
-  await run("src/collectors/velog/crawl.ts", span);
-  console.log("\n===== brunch =====");
-  await run("src/collectors/brunch/crawl.ts", span);
-  console.log("\n===== ads =====");
-  await run("src/collectors/ads/crawl.ts", [], {
-    ...process.env,
-    ADS_DATE_FROM: from,
-    ADS_DATE_TO: to,
-  });
-  console.log(`\n수집 완료 ${from} ~ ${to}`);
+  const ok = [
+    await step("tistory", () => run("src/collectors/tistory/crawl.ts", span)),
+    await step("velog", () => run("src/collectors/velog/crawl.ts", span)),
+    await step("brunch", () => run("src/collectors/brunch/crawl.ts", span)),
+    await step("ads", () =>
+      run("src/collectors/ads/crawl.ts", [], {
+        ...process.env,
+        ADS_DATE_FROM: from,
+        ADS_DATE_TO: to,
+      }),
+    ),
+  ];
+  if (ok.every(Boolean)) console.log(`\n수집 완료 ${from} ~ ${to}`);
+  else {
+    console.error(`\n일부 수집 실패 ${from} ~ ${to}`);
+    process.exit(1);
+  }
 }
 
 main().catch((error) => {

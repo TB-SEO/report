@@ -1,5 +1,5 @@
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { config as loadEnv } from "dotenv";
 import type { Page, Response } from "playwright";
 import { pageOn, releaseChrome, ensureDir, openPersistentChrome, root, waitUntil } from "../shared/chrome.js";
@@ -7,7 +7,7 @@ import { blogTargets } from "../shared/targets.js";
 import { extractSeriesFromJson, mergeSnapshots } from "../tistory/parse.js";
 import { addKstDays, toKstDate } from "../tistory/parse-api.js";
 import type { CaptureFile } from "../tistory/types.js";
-import { applyPostDays, type ListedPost, type PostDayStat } from "../shared/post-days.js";
+import { applyPostDays, inheritPostStats, type ListedPost, type PostDayStat } from "../shared/post-days.js";
 import { crawlRange, eachDay, keepDate, kstToday } from "../shared/crawl-range.js";
 import { upsertDailySnapshots, upsertPostsAndStats } from "../../lib/blog-upsert.js";
 import type { DailySnapshot } from "../tistory/types.js";
@@ -222,6 +222,7 @@ async function main() {
       return /@tbell\/stats/.test(url) && !/[?&]signin|login|accounts\.kakao/.test(url);
     },
     "크롬 창에서 브런치 통계가 보이게 로그인해 주세요. https://brunch.co.kr/@tbell/stats",
+    180_000,
   );
 
   if (!/@tbell\/stats/.test(page.url()) || /[?&]signin/.test(page.url())) {
@@ -230,6 +231,7 @@ async function main() {
       page,
       async () => /@tbell\/stats/.test(page.url()) && !/[?&]signin|login|accounts\.kakao/.test(page.url()),
       "크롬 창에서 브런치 통계가 보이게 로그인해 주세요. https://brunch.co.kr/@tbell/stats",
+      180_000,
     );
   }
   await page.waitForTimeout(1500);
@@ -250,17 +252,58 @@ async function main() {
   const blogEnd = to || today;
   const blogDailyUrl = `https://api.brunch.co.kr/v1/stats/brunch/daily?home=${homeId}&start=${blogStart}&end=${blogEnd}`;
   const blogDaily = await fetchJson(page, blogDailyUrl);
-  networkJson.push({ url: blogDailyUrl, body: blogDaily });
-  if (!blogDaily) {
-    throw new Error("브런치 일별 통계 API가 비었습니다. 통계 페이지에 로그인한 뒤 다시 수집해 주세요.");
-  }
+  if (blogDaily) networkJson.push({ url: blogDailyUrl, body: blogDaily });
+  else console.log("브런치 일별 통계 API가 비었습니다. 그래프 클릭과 기존 수집본으로 이어갑니다.");
 
   console.log("브런치 조회수 그래프에서 일자를 눌러 수집합니다.");
   const clickedDays = await clickBrunchChartDays(page, blogStart, blogEnd, targets.brunchStatsUrl);
 
   const postStats: PostDayStat[] = [];
   const totals: Array<{ id: string; title?: string; total: number }> = [];
-  const collapsed: PostDayStat[] = [];
+  console.log("글별 일간 조회를 수집합니다.");
+  for (const [index, post] of posts.entries()) {
+    const urls = [
+      `https://api.brunch.co.kr/v1/stats/article/daily?articleNo=${post.externalId}&start=${blogStart}&end=${blogEnd}`,
+      `https://api.brunch.co.kr/v1/stats/article/daily?no=${post.externalId}&home=${homeId}&start=${blogStart}&end=${blogEnd}`,
+    ];
+    let list: Array<{ datetime?: string; day?: string; cnt?: number; count?: number }> | null = null;
+    for (const url of urls) {
+      const body = await fetchJson(page, url);
+      if (!body) continue;
+      networkJson.push({ url, body });
+      const data = isRecord(body) && isRecord(body.data) ? body.data : isRecord(body) ? body : null;
+      const view = data && isRecord(data.view) ? data.view : null;
+      const rows = (view && Array.isArray(view.list) ? view.list : Array.isArray(data?.list) ? data.list : null) as
+        | Array<{ datetime?: string; day?: string; cnt?: number; count?: number }>
+        | null;
+      if (rows?.length) {
+        list = rows;
+        break;
+      }
+    }
+    if (!list?.length) {
+      console.log(`[${index + 1}/${posts.length}] ${post.title ?? post.externalId} 일간 없음`);
+      continue;
+    }
+    let total = 0;
+    for (const row of list) {
+      const date = String(row.datetime ?? row.day ?? "").slice(0, 10);
+      if (!date) continue;
+      const views = Number(row.cnt ?? row.count ?? 0);
+      total += views;
+      postStats.push({ externalId: post.externalId, date, views });
+    }
+    totals.push({ id: post.externalId, title: post.title, total });
+    console.log(`[${index + 1}/${posts.length}] ${post.title ?? post.externalId} ${list.length}일`);
+  }
+  const previous: PostDayStat[] = [];
+  if (existsSync(rawDir)) {
+    for (const name of readdirSync(rawDir).filter((item) => item.endsWith(".json"))) {
+      const json = JSON.parse(readFileSync(join(rawDir, name), "utf8")) as { postStats?: PostDayStat[] };
+      previous.push(...(json.postStats ?? []));
+    }
+  }
+  const collapsed = inheritPostStats(previous, postStats);
 
   let snapshots = mergeSnapshots([
     ...networkJson

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseTistoryNetwork } from "../collectors/tistory/parse-api.js";
-import { extractSeriesFromJson, mergeSnapshots } from "../collectors/tistory/parse.js";
+import { mergeSnapshots } from "../collectors/tistory/parse.js";
 import type { CaptureFile, DailySnapshot } from "../collectors/tistory/types.js";
 import { root } from "../collectors/shared/chrome.js";
 import { blogTargets } from "../collectors/shared/targets.js";
@@ -53,20 +53,83 @@ type RawFile = CaptureFile & {
   totals?: Array<{ id: string; title?: string; total: number }>;
 };
 
-function latestRaw(dir: string, prefer = "tbell"): { name: string; json: RawFile } | null {
-  if (!existsSync(dir)) return null;
-  const files = readdirSync(dir)
+function listRaw(dir: string, prefer = "tbell"): Array<{ name: string; json: RawFile; mtime: number }> {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
     .filter((name) => name.endsWith(".json"))
-    .map((name) => ({ name, mtime: statSync(join(dir, name)).mtimeMs }))
+    .map((name) => ({
+      name,
+      mtime: statSync(join(dir, name)).mtimeMs,
+      json: JSON.parse(readFileSync(join(dir, name), "utf8")) as RawFile,
+    }))
     .sort((a, b) => {
       const ap = a.name.startsWith(prefer) ? 1 : 0;
       const bp = b.name.startsWith(prefer) ? 1 : 0;
       if (ap !== bp) return bp - ap;
       return b.mtime - a.mtime;
     });
-  const picked = files[0];
-  if (!picked) return null;
-  return { name: picked.name, json: JSON.parse(readFileSync(join(dir, picked.name), "utf8")) as RawFile };
+}
+
+function mergeRawFiles(dir: string, prefer = "tbell"): { name: string; json: RawFile } | null {
+  const files = listRaw(dir, prefer);
+  if (!files.length) return null;
+  const posts = new Map<string, NonNullable<RawFile["posts"]>[number]>();
+  const totals = new Map<string, NonNullable<RawFile["totals"]>[number]>();
+  const stats = new Map<string, NonNullable<RawFile["postStats"]>[number]>();
+  for (const file of [...files].reverse()) {
+    for (const post of file.json.posts ?? []) {
+      const id = post.externalId ?? post.url ?? post.title ?? "";
+      if (id) posts.set(id, post);
+    }
+    for (const row of file.json.totals ?? []) totals.set(row.id, row);
+    for (const row of file.json.postStats ?? []) {
+      const key = `${row.externalId}|${row.date}`;
+      const prev = stats.get(key);
+      if (!prev || (row.views || 0) >= (prev.views || 0)) stats.set(key, row);
+    }
+  }
+  const latest = files[0];
+  return {
+    name: latest.name,
+    json: {
+      ...latest.json,
+      posts: [...posts.values()],
+      totals: [...totals.values()],
+      postStats: [...stats.values()],
+    },
+  };
+}
+
+function mergedSnapshots(
+  files: Array<{ json: RawFile }>,
+  platform: PlatformReport["platform"],
+): DailySnapshot[] {
+  const rows: DailySnapshot[] = [];
+  for (const file of [...files].reverse()) {
+    rows.push(...(file.json.snapshots ?? []));
+    if (platform === "TISTORY") {
+      rows.push(...parseTistoryNetwork(file.json.networkJson ?? []));
+    }
+    if (platform === "BRUNCH") {
+      for (const item of file.json.networkJson ?? []) {
+        if (!String(item.url).includes("stats/brunch/daily")) continue;
+        const list = (item.body as { data?: { view?: { list?: Array<{ datetime?: string; cnt?: number }> } } } | null)
+          ?.data?.view?.list;
+        if (!list?.length) continue;
+        for (const row of list) {
+          rows.push({
+            date: String(row.datetime).slice(0, 10),
+            views: Number(row.cnt ?? 0),
+            sources: [],
+            devices: [],
+            popularPosts: [],
+            inflowKeywords: [],
+          });
+        }
+      }
+    }
+  }
+  return mergeSnapshots(rows).filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && row.date >= "2026-01-01");
 }
 
 function range(snapshots: DailySnapshot[]): [string, string] | undefined {
@@ -80,11 +143,6 @@ function dayViews(snapshots: DailySnapshot[], date: string) {
 
 function kstToday() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
-}
-
-function kstYmd(iso?: string) {
-  if (!iso) return "";
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date(iso));
 }
 
 function addDays(ymd: string, delta: number) {
@@ -205,9 +263,10 @@ function withPostDays(snapshots: DailySnapshot[], json: RawFile | null | undefin
 }
 
 function tistoryReport(): PlatformReport {
-  const raw = latestRaw(join(root, "data/tistory-raw"));
+  const files = listRaw(join(root, "data/tistory-raw"));
+  const raw = mergeRawFiles(join(root, "data/tistory-raw"));
   const json = raw?.json ?? null;
-  const snapshots = withPostDays(raw ? parseTistoryNetwork(json?.networkJson ?? []) : [], json);
+  const snapshots = withPostDays(mergedSnapshots(files, "TISTORY"), json);
   const posts = reportPostsFromRaw(json);
   const fallback = [...snapshots].reverse().find((row) => row.popularPosts.length);
   const listed = posts.length
@@ -217,7 +276,8 @@ function tistoryReport(): PlatformReport {
 }
 
 function velogReport(): PlatformReport {
-  const raw = latestRaw(join(root, "data/velog-raw"));
+  const files = listRaw(join(root, "data/velog-raw"));
+  const raw = mergeRawFiles(join(root, "data/velog-raw"));
   const json = raw?.json;
   const totals = new Map((json?.totals ?? []).map((row) => [row.id, row]));
   const viewsByPost = new Map<string, number>();
@@ -237,83 +297,42 @@ function velogReport(): PlatformReport {
     })
     .sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
 
-  let snapshots = mergeSnapshots(json?.snapshots ?? []);
-  if (!snapshots.length) {
-    const byDate = new Map<string, DailySnapshot>();
-    for (const post of posts) {
-      const date = kstYmd(post.publishedAt);
-      if (!date || !post.views) continue;
-      const current = byDate.get(date) ?? {
-        date,
-        views: 0,
-        sources: [],
-        devices: [],
-        popularPosts: [],
-        inflowKeywords: [],
-      };
-      current.views = (current.views ?? 0) + (post.views ?? 0);
-      current.popularPosts.push({
-        rank: current.popularPosts.length + 1,
-        title: post.title ?? "",
-        url: post.url,
-        views: post.views ?? 0,
-      });
-      byDate.set(date, current);
-    }
-    snapshots = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-  }
+  const snapshots = withPostDays(mergedSnapshots(files, "VELOG"), json);
   const report = summarize("VELOG", raw?.name, json ?? null, snapshots, posts);
-  if (!(json?.snapshots?.length) && !(json?.postStats?.length) && snapshots.length) {
-    report.check.notes.push("일별 추이 대신 글 발행일의 총조회를 사용합니다.");
+  if (!(json?.postStats ?? []).some((row) => row.views) && !snapshots.some((row) => row.views)) {
+    report.check.notes.push("글별 총조회는 있습니다. 일별 추이는 원본에 없습니다.");
   }
   return report;
 }
 
 function brunchReport(): PlatformReport {
-  const raw = latestRaw(join(root, "data/brunch-raw"));
+  const files = listRaw(join(root, "data/brunch-raw"));
+  const raw = mergeRawFiles(join(root, "data/brunch-raw"));
   const json = raw?.json ?? null;
-  const blogNetwork = (json?.networkJson ?? []).filter((item) => String(item.url).includes("stats/brunch/daily"));
-  let snapshots = mergeSnapshots([
-    ...(json?.snapshots ?? []),
-    ...blogNetwork.flatMap((item) => extractSeriesFromJson(item.body)),
-  ]);
-  for (const item of blogNetwork) {
-    const payload = item.body as { data?: Record<string, unknown> } | null;
-    const data = payload?.data;
-    if (!data) continue;
-    const view = data.view as { total?: number; list?: Array<{ datetime?: string; cnt?: number }> } | undefined;
-    if (!view?.list?.length) continue;
-    snapshots = mergeSnapshots([
-      ...snapshots,
-      ...view.list.map((row) => ({
-        date: String(row.datetime).slice(0, 10),
-        views: Number(row.cnt ?? 0),
-        sources: [],
-        devices: [],
-        popularPosts: [],
-        inflowKeywords: [],
-      })),
-    ]);
-  }
-  snapshots = withPostDays(snapshots, json);
+  const snapshots = withPostDays(mergedSnapshots(files, "BRUNCH"), json);
   let posts = reportPostsFromRaw(json);
   if (!posts.length) {
-    for (const item of blogNetwork) {
-      const popular = (item.body as { data?: { popular?: unknown } } | null)?.data?.popular;
-      if (!Array.isArray(popular)) continue;
-      posts = popular.map((row) => {
-        const rec = row as Record<string, unknown>;
-        const no = rec.article_no ?? rec.articleNo;
-        return {
-          title: String(rec.title ?? ""),
-          views: Number(rec.cnt ?? 0),
-          url: no != null ? `https://brunch.co.kr/@tbell/${no}` : undefined,
-        };
-      });
+    for (const file of files) {
+      for (const item of file.json.networkJson ?? []) {
+        if (!String(item.url).includes("stats/brunch/daily")) continue;
+        const popular = (item.body as { data?: { popular?: unknown } } | null)?.data?.popular;
+        if (!Array.isArray(popular)) continue;
+        posts = popular.map((row) => {
+          const rec = row as Record<string, unknown>;
+          const no = rec.article_no ?? rec.articleNo;
+          return {
+            title: String(rec.title ?? ""),
+            views: Number(rec.cnt ?? 0),
+            url: no != null ? `https://brunch.co.kr/@tbell/${no}` : undefined,
+          };
+        });
+      }
     }
   }
   const report = summarize("BRUNCH", raw?.name, json, snapshots, posts);
-  const daily = blogNetwork[0];
+  const daily = [...files]
+    .flatMap((file) => file.json.networkJson ?? [])
+    .find((item) => String(item.url).includes("stats/brunch/daily"));
   const total = (daily?.body as { data?: { view?: { total?: number } } } | undefined)?.data?.view?.total;
   if (typeof total === "number") report.totalViews = total;
   return report;
@@ -326,11 +345,36 @@ export function buildReportFromLocalFiles(): ReportPayload {
   };
 }
 
+function rawStamp() {
+  let stamp = 0;
+  for (const dir of ["data/tistory-raw", "data/velog-raw", "data/brunch-raw"]) {
+    const files = listRaw(join(root, dir));
+    stamp += files.reduce((sum, file) => sum + file.mtime, 0);
+  }
+  return stamp;
+}
+
+let reportCache: { stamp: number; payload: ReportPayload } | null = null;
+
 export async function loadReport(): Promise<ReportPayload> {
-  const { getAppDocument, putAppDocument } = await import("../lib/app-documents.js");
-  const stored = await getAppDocument<ReportPayload>("report");
-  if (stored) return stored.payload;
-  const built = buildReportFromLocalFiles();
-  await putAppDocument("report", built).catch(() => undefined);
-  return built;
+  const stamp = rawStamp();
+  if (stamp) {
+    if (reportCache?.stamp === stamp) return reportCache.payload;
+    const built = buildReportFromLocalFiles();
+    reportCache = { stamp, payload: built };
+    import("../lib/app-documents.js")
+      .then((mod) => mod.putAppDocument("report", built))
+      .catch(() => undefined);
+    return built;
+  }
+  try {
+    const { getAppDocument, putAppDocument } = await import("../lib/app-documents.js");
+    const stored = await getAppDocument<ReportPayload>("report");
+    if (stored) return stored.payload;
+    const built = buildReportFromLocalFiles();
+    await putAppDocument("report", built).catch(() => undefined);
+    return built;
+  } catch {
+    return buildReportFromLocalFiles();
+  }
 }

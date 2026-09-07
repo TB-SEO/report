@@ -1,5 +1,5 @@
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { config as loadEnv } from "dotenv";
 import type { Locator, Page, Response } from "playwright";
 import { pageOn, releaseChrome, waitUntil } from "../shared/chrome.js";
@@ -8,7 +8,7 @@ import { blogTargets } from "../shared/targets.js";
 import { ensureDir, loadConfig, withBlog, type AppConfig } from "./config.js";
 import { parseTistoryNetwork, addKstDays, toKstDate } from "./parse-api.js";
 import type { CaptureFile } from "./types.js";
-import { applyPostDays, type ListedPost, type PostDayStat } from "../shared/post-days.js";
+import { applyPostDays, inheritPostStats, type ListedPost, type PostDayStat } from "../shared/post-days.js";
 import { crawlRange, eachDay, keepDate } from "../shared/crawl-range.js";
 
 loadEnv();
@@ -283,10 +283,17 @@ async function main() {
 
   const uniqueStats = new Map<string, PostDayStat>();
   for (const row of postStats) {
-    if (!keepDate(row.date, from, to)) continue;
     uniqueStats.set(`${row.externalId}|${row.date}`, row);
   }
-  const collapsed = [...uniqueStats.values()];
+  const incoming = [...uniqueStats.values()];
+  const previous: PostDayStat[] = [];
+  if (existsSync(cfg.rawDir)) {
+    for (const name of readdirSync(cfg.rawDir).filter((item) => item.endsWith(".json"))) {
+      const json = JSON.parse(readFileSync(join(cfg.rawDir, name), "utf8")) as { postStats?: PostDayStat[] };
+      previous.push(...(json.postStats ?? []));
+    }
+  }
+  const collapsed = inheritPostStats(previous, incoming);
   const merged = applyPostDays(parseTistoryNetwork(networkJson), posts, collapsed).filter(
     (row) => keepDate(row.date, from, to),
   );

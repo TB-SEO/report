@@ -148,6 +148,10 @@
       .tag.TISTORY { color: var(--tistory); }
       .tag.VELOG { color: var(--velog); }
       .tag.BRUNCH { color: var(--brunch); }
+      h3.plat-title { font-size: 15px; line-height: 24px; font-weight: 700; margin: 16px 0 8px; color: var(--fg); }
+      h3.plat-title.TISTORY { color: var(--tistory); }
+      h3.plat-title.VELOG { color: var(--velog); }
+      h3.plat-title.BRUNCH { color: var(--brunch); }
       @media (max-width: 900px) {
         .cards, .grid { grid-template-columns: 1fr; }
       }
@@ -271,13 +275,11 @@
             if (!map.has(key)) map.set(key, emptyBucket(key));
             map.get(key).posts.push({ ...post, platform: platform.platform });
           }
-          if (!(platform.postDays || []).length) {
-            for (const row of platform.snapshots || []) {
-              const bucket = map.get(periodKey(row.date));
-              if (!bucket) continue;
-              for (const post of row.popularPosts || []) {
-                if (post.views) bucket.posts.push({ ...post, platform: platform.platform });
-              }
+          for (const row of platform.snapshots || []) {
+            const bucket = map.get(periodKey(row.date));
+            if (!bucket) continue;
+            for (const post of row.popularPosts || []) {
+              if (post.views) bucket.posts.push({ ...post, platform: platform.platform });
             }
           }
         }
@@ -365,9 +367,21 @@
           if (!post.views) return acc;
           const id = `${post.platform || ""}|${post.url || post.title}`;
           if (!acc[id]) acc[id] = { ...post, views: 0 };
-          acc[id].views += post.views || 0;
+          acc[id].views = Math.max(acc[id].views || 0, post.views || 0);
           return acc;
         }, {})).sort((a, b) => (b.views || 0) - (a.views || 0));
+        const platOrder = current === "ALL" ? ["TISTORY", "VELOG", "BRUNCH"] : [current];
+        const contentBlock = platOrder.map((plat) => {
+          const rows = posts.filter((post) => post.platform === plat);
+          const body = rows.length
+            ? rows.map((post) => `<tr><td>${post.url ? `<a href="${post.url}" target="_blank">${post.title || post.url}</a>` : (post.title || "-")}</td><td class="num">${fmt(post.views)}</td></tr>`).join("")
+            : `<tr><td colspan="2">이 기간 조회가 있는 글이 없습니다.</td></tr>`;
+          return `<h3 class="plat-title ${plat}">${labels[plat]}</h3>
+          <table>
+            <thead><tr><th>글</th><th class="num">조회</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table>`;
+        }).join("");
         const barColor = current === "ALL" ? "" : current;
         const canNewer = chartPage > 0;
         const canOlder = chartPage < pageCount - 1;
@@ -430,12 +444,7 @@
             </div>
           </div>
           <h2>콘텐츠 · ${periodLabel(selected.key)}</h2>
-          <table>
-            <thead><tr><th>글</th><th class="num">조회</th></tr></thead>
-            <tbody>
-              ${posts.length ? posts.map((post) => `<tr><td>${current === "ALL" ? `<span class="tag ${post.platform}">${labels[post.platform]}</span>` : ""}${post.url ? `<a href="${post.url}" target="_blank">${post.title || post.url}</a>` : (post.title || "-")}</td><td class="num">${fmt(post.views)}</td></tr>`).join("") : `<tr><td colspan="2">이 기간 조회가 있는 글이 없습니다.</td></tr>`}
-            </tbody>
-          </table>
+          ${contentBlock}
           <div class="grid" style="margin-top:20px">
             <div>
               <h2>유입 키워드</h2>
@@ -462,7 +471,13 @@
       }
 
       async function load() {
-        report = await window.TASSI.loadJson("report", window.TASSI.api("report"));
+        let next = null;
+        if (!window.TASSI.isPages) {
+          const res = await fetch(`/api/report?t=${Date.now()}`);
+          if (res.ok) next = await res.json();
+        }
+        if (!next) next = await window.TASSI.loadJson("report", window.TASSI.api("report"));
+        report = next;
         render();
       }
       load();

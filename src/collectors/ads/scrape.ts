@@ -583,6 +583,81 @@ export function hasNaverGroupTraffic(row: NaverCampaignGroupRow) {
   return row.impressions > 0 || row.clicks > 0;
 }
 
+export type NaverCampaignRow = {
+  name: string;
+  id: string;
+  href: string;
+  status?: string;
+};
+
+async function paginateHarvest<T>(page: Page, harvest: () => Promise<void>, sizeOf: () => number) {
+  await harvest();
+  let stagnant = 0;
+  for (let pageNo = 2; pageNo <= 15; pageNo++) {
+    const numbered = page.locator(".ad-cms-pagination button, [class*='ad-cms-pagination'] button").filter({
+      hasText: new RegExp(`^${pageNo}$`),
+    });
+    const next = page.locator("button.ad-cms-pagination-next, .ad-cms-pagination button:has-text('다음')").last();
+    if ((await numbered.count()) > 0) {
+      await numbered.first().click({ force: true }).catch(() => undefined);
+    } else if ((await next.count()) > 0 && !(await next.isDisabled().catch(() => true))) {
+      await next.click({ force: true }).catch(() => undefined);
+    } else {
+      break;
+    }
+    await page.waitForTimeout(900);
+    const before = sizeOf();
+    await harvest();
+    if (sizeOf() === before) {
+      stagnant += 1;
+      if (stagnant >= 2) break;
+    } else {
+      stagnant = 0;
+    }
+  }
+}
+
+export async function readNaverCampaignRows(page: Page): Promise<NaverCampaignRow[]> {
+  await scrollList(page);
+  await page.waitForTimeout(400);
+  return page.evaluate(`(() => {
+    const clean = (text) => (text || "").replace(/\\s+/g, " ").trim();
+    const parseRow = (row) => {
+      const link = row.querySelector('a[href*="/campaigns/cmp-"]');
+      if (!link) return null;
+      const href = link.href || "";
+      const id = (href.match(/campaigns\\/(cmp-[a-zA-Z0-9-]+)/) || [])[1] || "";
+      if (!id) return null;
+      const name = clean(link.textContent);
+      if (!name) return null;
+      const text = clean(row.innerText || row.textContent);
+      const status = /운영\\s*가능/.test(text) ? "운영가능" : /중지|OFF/.test(text) ? "중지" : undefined;
+      return { name, id, href, status };
+    };
+    const out = [];
+    const seen = new Set();
+    for (const row of document.querySelectorAll("tr, [role=row], .ag-row")) {
+      const parsed = parseRow(row);
+      if (!parsed || seen.has(parsed.id)) continue;
+      seen.add(parsed.id);
+      out.push(parsed);
+    }
+    return out;
+  })()`) as Promise<NaverCampaignRow[]>;
+}
+
+export async function listNaverCampaigns(page: Page): Promise<NaverCampaignRow[]> {
+  const all = new Map<string, NaverCampaignRow>();
+  await paginateHarvest(
+    page,
+    async () => {
+      for (const row of await readNaverCampaignRows(page)) all.set(row.id, row);
+    },
+    () => all.size,
+  );
+  return [...all.values()];
+}
+
 export type NaverKeywordMaster = {
   name: string;
   onOff: boolean;

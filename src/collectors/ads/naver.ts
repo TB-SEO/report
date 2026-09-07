@@ -1,16 +1,18 @@
 import type { BrowserContext, Page } from "playwright";
 import { resolve } from "node:path";
-import { loadNaverCatalog } from "./catalog.js";
+import { loadNaverCatalog, saveNaverCatalog } from "./catalog.js";
 import { adsWeeks, eachDay, type AdsWeek } from "./dates.js";
 import { checkNaverExcel, excelHasTotalConversions, parseNaverKeywordXlsx, type NaverExcelKeyword } from "./excel.js";
 import { ensureDir, root } from "./chrome.js";
 import {
+  clickNaverAllStatus,
   clickNaverKeywordDownload,
   ensureNaverKeywordDownload,
   ensureNaverTotalConversionsColumn,
   gotoQuiet,
   hasNaverGroupTraffic,
   listNaverCampaignGroups,
+  listNaverCampaigns,
   naverGroupIdFromUrl,
   openFreshPage,
   readNaverGroupKeywordMaster,
@@ -43,7 +45,7 @@ type GroupNode = {
     marketBidAt?: string;
   }>;
 };
-type CampNode = { id: string; name: string; href: string; groups: GroupNode[] };
+type CampNode = { id: string; name: string; href: string; status?: string; groups: GroupNode[] };
 
 function toScraped(row: NaverExcelKeyword) {
   return {
@@ -68,8 +70,7 @@ function groupHref(id: string) {
   return `${BASE}/adgroups/${id}`;
 }
 
-function seedTree(): CampNode[] {
-  const catalog = loadNaverCatalog();
+function seedFromCatalog(catalog: ReturnType<typeof loadNaverCatalog>): CampNode[] {
   const want = (process.env.NAVER_ADS_CAMPAIGN_ID || process.env.ADS_CAMPAIGN || "")
     .split(/[,|]/)
     .map((item) => item.trim())
@@ -81,8 +82,40 @@ function seedTree(): CampNode[] {
     id: item.id,
     name: item.name,
     href: `${BASE}/campaigns/${item.id}`,
+    status: item.status,
     groups: [] as GroupNode[],
   }));
+}
+
+function crawlTargets(tree: CampNode[]) {
+  return tree.filter((camp) => /QA\s*업체/i.test(camp.name) || !/중지|OFF/i.test(camp.status || ""));
+}
+
+async function refreshCatalogFromAccount(context: BrowserContext, notes: string[]): Promise<CampNode[]> {
+  const catalog = loadNaverCatalog();
+  const page = await openFreshPage(context, CAMPAIGNS);
+  if (!page) {
+    notes.push("캠페인 목록 페이지를 열지 못해 저장된 카탈로그만 사용합니다.");
+    return seedFromCatalog(catalog);
+  }
+  await clickNaverAllStatus(page);
+  await sleep(1200);
+  const live = await listNaverCampaigns(page);
+  await page.close().catch(() => undefined);
+  if (!live.length) {
+    notes.push("캠페인 목록을 읽지 못해 저장된 카탈로그만 사용합니다.");
+    return seedFromCatalog(catalog);
+  }
+  const byId = new Map(catalog.campaigns.map((item) => [item.id, item]));
+  for (const row of live) {
+    byId.set(row.id, { id: row.id, name: row.name, status: row.status || byId.get(row.id)?.status });
+  }
+  const next = { campaigns: [...byId.values()], groups: catalog.groups };
+  saveNaverCatalog(next);
+  const names = live.map((row) => row.name).join(", ");
+  notes.push(`네이버 캠페인 목록 ${live.length}개: ${names}`);
+  console.log(`네이버 캠페인 목록 ${live.length}개: ${names}`);
+  return seedFromCatalog(next);
 }
 
 function weekDoneLabel(week: AdsWeek) {
@@ -261,17 +294,18 @@ export async function crawlNaverAds(
   dateRange: [string, string],
   onTree?: (tree: unknown[], notes: string[]) => void,
 ): Promise<PlatformCapture> {
-  const tree = seedTree();
-  const weeks = adsWeeks(...dateRange);
   const notes: string[] = [];
+  const tree = await refreshCatalogFromAccount(context, notes);
+  const weeks = adsWeeks(...dateRange);
   const onSave = () => onTree?.(tree, notes);
   const excelDir = resolve(root, "data/ads-raw/naver-excel");
   ensureDir(excelDir);
 
   notes.push("캠페인 상세에서 하루 기간을 맞춘 뒤 실적 있는 그룹은 엑셀을 받고, 모든 그룹에서 ON/OFF·0건 키워드를 읽습니다.");
-  console.log(`네이버 캠페인 ${tree.length}개, ${weeks.length}주 (${dateRange[0]} ~ ${dateRange[1]})`);
+  const targets = crawlTargets(tree);
+  console.log(`네이버 캠페인 ${targets.length}개 (목록 ${tree.length}개), ${weeks.length}주 (${dateRange[0]} ~ ${dateRange[1]})`);
 
-  for (const camp of tree) {
+  for (const camp of targets) {
     const page = await openFreshPage(context, camp.href);
     if (!page) {
       notes.push(`캠페인 상세 열기 실패 ${camp.name}`);

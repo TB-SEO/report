@@ -1,11 +1,12 @@
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
 import type { Page, Response } from "playwright";
 import { pageOn, releaseChrome, openPersistentChrome, waitUntil, root, ensureDir } from "../shared/chrome.js";
 import { blogTargets } from "../shared/targets.js";
 import type { CaptureFile, DailySnapshot } from "../tistory/types.js";
 import { crawlRange, keepDate } from "../shared/crawl-range.js";
+import { inheritPostStats } from "../shared/post-days.js";
 import { upsertDailySnapshots, upsertPostsAndStats } from "../../lib/blog-upsert.js";
 
 loadEnv();
@@ -27,6 +28,15 @@ query Posts($username: String!, $cursor: ID, $limit: Int) {
     likes
     comments_count
     released_at
+  }
+}
+`;
+
+const GET_STATS_QUERY = `
+query GetStats($post_id: String!) {
+  getStats(post_id: $post_id) {
+    total
+    count_by_day { count day }
   }
 }
 `;
@@ -108,6 +118,21 @@ function statsFromGraphqlBody(body: unknown): StatsPayload | null {
   if (!body || typeof body !== "object") return null;
   const data = (body as { data?: { getStats?: StatsPayload } }).data?.getStats;
   return data ?? null;
+}
+
+async function collectStats(page: Page, username: string, post: VelogPost): Promise<StatsPayload | null> {
+  try {
+    const data = await graphqlFromPage<{ getStats: StatsPayload | null }>(
+      page,
+      GET_STATS_QUERY,
+      { post_id: post.id },
+      "GetStats",
+    );
+    if (data.getStats?.count_by_day?.length || data.getStats?.total != null) return data.getStats;
+  } catch {
+    // UI 통계 화면으로 이어감
+  }
+  return collectStatsFromUi(page, username, post);
 }
 
 async function collectStatsFromUi(page: Page, username: string, post: VelogPost): Promise<StatsPayload | null> {
@@ -224,7 +249,7 @@ async function main() {
     }
     console.log(`[${index + 1}/${posts.length}] ${post.title}`);
     try {
-      const stats = await collectStatsFromUi(page, username, post);
+      const stats = await collectStats(page, username, post);
       const days = stats?.count_by_day ?? [];
       if (stats?.total != null) totals.push({ id: post.id, title: post.title, total: stats.total });
       if (!days.length) {
@@ -232,7 +257,6 @@ async function main() {
       }
       for (const point of days) {
         const date = String(point.day).slice(0, 10);
-        if (!keepDate(date, from, to)) continue;
         postStats.push({
           externalId: post.id,
           date,
@@ -240,6 +264,7 @@ async function main() {
           likes: post.likes,
           comments: post.comments_count,
         });
+        if (!keepDate(date, from, to)) continue;
         const current = byDate.get(date) ?? emptyDay(date);
         current.views = (current.views ?? 0) + point.count;
         byDate.set(date, current);
@@ -259,8 +284,16 @@ async function main() {
     networkJson: [],
     snapshots,
   };
+  const previous = [];
+  if (existsSync(rawDir)) {
+    for (const name of readdirSync(rawDir).filter((item) => item.endsWith(".json"))) {
+      const json = JSON.parse(readFileSync(join(rawDir, name), "utf8")) as { postStats?: typeof postStats };
+      previous.push(...(json.postStats ?? []));
+    }
+  }
+  const savedStats = inheritPostStats(previous, postStats);
   const outFile = resolve(rawDir, `${username}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
-  writeFileSync(outFile, JSON.stringify({ ...capture, posts: postInputs, postStats, totals }, null, 2), "utf8");
+  writeFileSync(outFile, JSON.stringify({ ...capture, posts: postInputs, postStats: savedStats, totals }, null, 2), "utf8");
   console.log(`원본 저장: ${outFile}`);
   console.log(`정규화된 날짜 ${snapshots.length}건 / 총조회 있는 글 ${totals.length}편`);
 
@@ -275,7 +308,7 @@ async function main() {
         name: username,
       },
       postInputs,
-      postStats,
+      savedStats,
     );
     const result = await upsertDailySnapshots(
       {

@@ -15,6 +15,17 @@ export type PostDayStat = {
   comments?: number;
 };
 
+export function inheritPostStats(previous: PostDayStat[], incoming: PostDayStat[]): PostDayStat[] {
+  const map = new Map<string, PostDayStat>();
+  for (const row of previous) map.set(`${row.externalId}|${row.date}`, row);
+  for (const row of incoming) {
+    const key = `${row.externalId}|${row.date}`;
+    const prev = map.get(key);
+    if (!prev || (row.views || 0) > 0) map.set(key, row);
+  }
+  return [...map.values()];
+}
+
 export function applyPostDays(snapshots: DailySnapshot[], posts: ListedPost[], stats: PostDayStat[]): DailySnapshot[] {
   const meta = new Map(posts.map((post) => [post.externalId, post]));
   const byDate = new Map<string, DailySnapshot>();
