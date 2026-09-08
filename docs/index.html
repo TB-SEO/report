@@ -94,6 +94,8 @@
       .list .nest li { padding: 3px 0 3px 18px; }
       #sec-note > div { padding: 5px 0; }
       #sec-note > .lead { padding-bottom: 2px; }
+      #sec-note ul { margin: 0; padding-left: 22px; list-style: disc; }
+      #sec-note li { padding: 5px 0; line-height: 1.6; }
       [contenteditable] { outline: none; }
       [contenteditable]:focus { background: #f7f9ff; }
       .perf { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -427,15 +429,40 @@
 
         <div class="sec print-hide">
           <div class="sec-title">4. 향후 진행 일정</div>
-          <div id="sec-next" class="list" contenteditable="true">
-            <p class="empty-week">없음</p>
+          <div id="sec-next" class="list narrative" contenteditable="true">
+            <div class="topic">1) 콘텐츠 제작 및 채널 운영</div>
+            <ul class="bullets">
+              <li>Meta AI 테스트 자동화 사례 콘텐츠 작성 및 게시 (~9/11)</li>
+              <li>TBELL QA·보안 관련 단편 콘텐츠 작성</li>
+              <li>LinkedIn·Facebook 기존 콘텐츠 순차 업로드</li>
+            </ul>
+            <div class="topic">2) 광고 및 검색 노출 개선</div>
+            <ul class="bullets">
+              <li>Meta 광고 운영 및 콘텐츠별 성과 모니터링</li>
+              <li>TBELL QA 검색광고 운영 및 성과 확인</li>
+              <li>보안 관련 검색광고 키워드 검토 및 세팅</li>
+              <li>QA·보안 관련 검색 노출 확대 지속</li>
+            </ul>
+            <div class="topic">3) 모객 활동</div>
+            <ul class="bullets">
+              <li>tassi@tbell.co.kr 계정으로 발송 대상 기업 및 발송 현황 관리</li>
+            </ul>
+            <div class="topic">4) 보안 사업 마케팅</div>
+            <ul class="bullets">
+              <li>보안 사업 경쟁·마케팅 현황 조사</li>
+              <li>보안 콘텐츠 및 검색 노출 운영 방향 구체화</li>
+              <li>TBELL 보안 팜플렛 제작</li>
+            </ul>
           </div>
         </div>
 
         <div class="sec last print-hide">
           <div class="sec-title">5. 참고 사항</div>
           <div id="sec-note" class="list" contenteditable="true">
-            <p class="empty-week">없음</p>
+            <ul>
+              <li>시험성적서 관련 검색 수요의 최종 유입 페이지는 T-ASSI로 운영하는 방향으로 확정하여 관련 광고 세팅을 진행할 예정입니다.</li>
+              <li>보안 사업의 구글 검색 노출 주체에 대한 결정이 필요합니다. 신규 보안 서비스 또는 별도 채널을 중심으로 운영할지, 기존 TBELL 브랜드 및 홈페이지를 활용할지에 따라 향후 콘텐츠·SEO 운영 방향을 구분할 예정입니다.</li>
+            </ul>
           </div>
         </div>
 
@@ -1026,6 +1053,8 @@
           ...empty,
           "sec-progress": DEFAULT_SECTIONS["sec-progress"],
           "sec-detail": DEFAULT_SECTIONS["sec-detail"],
+          "sec-next": DEFAULT_SECTIONS["sec-next"],
+          "sec-note": DEFAULT_SECTIONS["sec-note"],
         };
         let src = live;
         if (weekSnap?.sections) {
@@ -1036,6 +1065,8 @@
             const saved = JSON.parse(localStorage.getItem(editKey()) || "null");
             if (saved?.["sec-progress"]) src = { ...live, "sec-progress": saved["sec-progress"] };
             if (saved?.["sec-detail"] && !/empty-week/.test(saved["sec-detail"])) src["sec-detail"] = saved["sec-detail"];
+            if (saved?.["sec-next"] && !/empty-week/.test(saved["sec-next"])) src["sec-next"] = saved["sec-next"];
+            if (saved?.["sec-note"] && !/empty-week/.test(saved["sec-note"])) src["sec-note"] = saved["sec-note"];
           } catch {}
         }
         for (const id of SECTION_IDS) {
