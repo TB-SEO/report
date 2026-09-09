@@ -477,10 +477,11 @@
         <div class="mail-foot print-hide" id="mailFoot"></div>
       </div>
       <div class="pdf-only">
+        <section class="pdf-page" id="pdf-ads-tassi"></section>
+        <section class="pdf-page" id="pdf-ads-tbell"></section>
+        <section class="pdf-page" id="pdf-ads-days"></section>
         <section class="pdf-page" id="pdf-blog"></section>
         <section class="pdf-page" id="pdf-blog-days"></section>
-        <section class="pdf-page" id="pdf-ads"></section>
-        <section class="pdf-page" id="pdf-ads-days"></section>
       </div>
     </div>
     <div class="toast" id="toast"></div>
@@ -982,6 +983,61 @@
             </td>
           </tr></table>`;
       }
+      function pdfAdsDeskHtml(title, desk, from, to, prev, days, chartOpt, sub) {
+        const a = adsDaysForDesk(from, to, desk);
+        const aPrev = adsDaysForDesk(prev.from, prev.to, desk);
+        const adsByDate = new Map(a.daily.map((row) => [row.date, row]));
+        const rows = days.map((d) => {
+          const row = adsByDate.get(d);
+          return {
+            label: md(d),
+            stack: { NAVER: row?.naver.impressions || 0, GOOGLE: row?.google.impressions || 0 },
+            line: { NAVER: row?.naver.clicks || 0, GOOGLE: row?.google.clicks || 0 },
+          };
+        });
+        const camps = campaignsIn(from, to).filter((c) => c.desk === desk);
+        const kws = keywordsIn(from, to).filter((k) => k.desk === desk);
+        const dImp = avgCompare(a.impressions, aPrev.impressions, from, to, prev.from, prev.to);
+        const dClk = avgCompare(a.clicks, aPrev.clicks, from, to, prev.from, prev.to);
+        const dCost = delta(a.cost, aPrev.cost);
+        return `
+          <h1>${title}</h1>
+          <p class="pdf-sub">${sub}</p>
+          <table class="pdf-kpis"><tr>
+            <td><div class="k">기간 노출</div><div class="v">${fmt(a.impressions)}</div><div class="s ${dImp.cls}">${dImp.text}</div></td>
+            <td><div class="k">기간 클릭</div><div class="v">${fmt(a.clicks)}</div><div class="s ${dClk.cls}">${dClk.text} · CTR ${fmt1(a.ctr)}% · 전환 ${fmt(a.conversions)}</div></td>
+            <td><div class="k">기간 비용</div><div class="v">${won(a.cost)}</div><div class="s ${dCost.cls}">${dCost.text}</div></td>
+            <td><div class="k">평균 CPC</div><div class="v">${won(a.cpc)}</div><div class="s">네이버 ${won(a.byPlat.NAVER.cost)} · 구글 ${won(a.byPlat.GOOGLE.cost)}</div></td>
+          </tr></table>
+          <div class="chart-cap">일별 노출 추이 · 클릭(선)</div>
+          ${svgChart({ rows, keys: ["NAVER", "GOOGLE"], colors: adsColor, lines: ["NAVER", "GOOGLE"], lineColors: clickColor, ...chartOpt })}
+          ${legend([
+            { color: adsColor.NAVER, label: "네이버 노출" },
+            { color: adsColor.GOOGLE, label: "구글 노출" },
+            { color: clickColor.NAVER, label: "네이버 클릭", line: true },
+            { color: clickColor.GOOGLE, label: "구글 클릭", line: true },
+          ])}
+          <table class="pdf-grid"><tr>
+            <td>
+              <h2>캠페인</h2>
+              <table class="data">
+                <thead><tr><th>캠페인</th><th class="num">노출</th><th class="num">클릭</th><th class="num">CTR</th><th class="num">비용</th></tr></thead>
+                <tbody>${camps.slice(0, 10).map((c) =>
+                  `<tr><td><span class="tag ${c.platform}">${platAds[c.platform]}</span>${c.name}</td><td class="num">${fmt(c.impressions)}</td><td class="num">${fmt(c.clicks)}</td><td class="num">${fmt1(c.ctr)}%</td><td class="num">${won(c.cost)}</td></tr>`
+                ).join("") || `<tr><td colspan="5">캠페인이 없습니다.</td></tr>`}</tbody>
+              </table>
+            </td>
+            <td>
+              <h2>상위 키워드</h2>
+              <table class="data">
+                <thead><tr><th>키워드</th><th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th></tr></thead>
+                <tbody>${kws.slice(0, 12).map((k) =>
+                  `<tr><td><span class="tag ${k.platform}">${platAds[k.platform]}</span>${k.name}</td><td class="num">${fmt(k.impressions)}</td><td class="num">${fmt(k.clicks)}</td><td class="num">${won(k.cost)}</td></tr>`
+                ).join("") || `<tr><td colspan="4">키워드가 없습니다.</td></tr>`}</tbody>
+              </table>
+            </td>
+          </tr></table>`;
+      }
 
       function svgChart({ rows, keys, colors, lines = [], lineColors = {}, width = 400, height = 190 }) {
         const L = 36, R = lines.length ? 36 : 12, T = 10, B = 26;
@@ -1243,33 +1299,66 @@
 
         const pdfR = detailRange();
         const bPdf = blogViews(pdfR.from, pdfR.to);
-        const aPdf = adsDays(pdfR.from, pdfR.to);
         const prevPdf = prevRange(pdfR.from, pdfR.to);
         const bPdfPrev = blogViews(prevPdf.from, prevPdf.to);
-        const aPdfPrev = adsDays(prevPdf.from, prevPdf.to);
         const daysPdf = eachDay(pdfR.from, pdfR.to);
-        const adsByDatePdf = new Map(aPdf.daily.map((row) => [row.date, row]));
         const pdfBlogRows = daysPdf.map((d) => ({
           label: md(d),
           stack: bPdf.daily.get(d) || { TISTORY: 0, VELOG: 0, BRUNCH: 0 },
         }));
-        const pdfAdsRows = daysPdf.map((d) => {
-          const row = adsByDatePdf.get(d);
-          return {
-            label: md(d),
-            stack: { NAVER: row?.naver.impressions || 0, GOOGLE: row?.google.impressions || 0 },
-            line: { NAVER: row?.naver.clicks || 0, GOOGLE: row?.google.clicks || 0 },
-          };
-        });
-        const campsPdf = campaignsIn(pdfR.from, pdfR.to);
-        const kwsPdf = keywordsIn(pdfR.from, pdfR.to);
-        const dImp = avgCompare(aPdf.impressions, aPdfPrev.impressions, pdfR.from, pdfR.to, prevPdf.from, prevPdf.to);
-        const dClk = avgCompare(aPdf.clicks, aPdfPrev.clicks, pdfR.from, pdfR.to, prevPdf.from, prevPdf.to);
-        const dCost = delta(aPdf.cost, aPdfPrev.cost);
         const dView = avgCompare(bPdf.total, bPdfPrev.total, pdfR.from, pdfR.to, prevPdf.from, prevPdf.to);
         const notablePosts = bPdf.topPosts.filter((p) => (p.views || 0) >= 3).slice(0, 12);
         const pdfChart = { width: 1040, height: 200 };
         const pdfSub = `${md(pdfR.from)} ~ ${md(pdfR.to)} · 최근 20일`;
+        const tassiDaily = adsDaysForDesk(pdfR.from, pdfR.to, "tassi");
+        const tbellDaily = adsDaysForDesk(pdfR.from, pdfR.to, "tbell");
+        const tassiByDate = new Map(tassiDaily.daily.map((row) => [row.date, row]));
+        const tbellByDate = new Map(tbellDaily.daily.map((row) => [row.date, row]));
+
+        document.getElementById("pdf-ads-tassi").innerHTML = pdfAdsDeskHtml(
+          "키워드 상세 · 티어시",
+          "tassi",
+          pdfR.from,
+          pdfR.to,
+          prevPdf,
+          daysPdf,
+          pdfChart,
+          pdfSub,
+        );
+        document.getElementById("pdf-ads-tbell").innerHTML = pdfAdsDeskHtml(
+          "키워드 상세 · 티벨 QA 업체",
+          "tbell",
+          pdfR.from,
+          pdfR.to,
+          prevPdf,
+          daysPdf,
+          pdfChart,
+          pdfSub,
+        );
+        document.getElementById("pdf-ads-days").innerHTML = `
+          <h1>키워드 일별 성과</h1>
+          <p class="pdf-sub">${pdfSub}</p>
+          <table class="data">
+            <thead>
+              <tr>
+                <th rowspan="2">날짜</th>
+                <th colspan="3">티어시</th>
+                <th colspan="3">티벨 QA 업체</th>
+              </tr>
+              <tr>
+                <th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th>
+                <th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th>
+              </tr>
+            </thead>
+            <tbody>${daysPdf.map((d) => {
+              const t = tassiByDate.get(d) || { impressions: 0, clicks: 0, cost: 0 };
+              const q = tbellByDate.get(d) || { impressions: 0, clicks: 0, cost: 0 };
+              return `<tr><td>${md(d)} (${yoil(d)})</td>
+                <td class="num">${fmt(t.impressions)}</td><td class="num">${fmt(t.clicks)}</td><td class="num">${won(t.cost)}</td>
+                <td class="num">${fmt(q.impressions)}</td><td class="num">${fmt(q.clicks)}</td><td class="num">${won(q.cost)}</td></tr>`;
+            }).join("")}</tbody>
+          </table>
+        `;
 
         document.getElementById("pdf-blog").innerHTML = `
           <h1>블로그 상세</h1>
@@ -1320,64 +1409,6 @@
             <tbody>${daysPdf.map((d) => {
               const row = bPdf.daily.get(d) || { TISTORY: 0, VELOG: 0, BRUNCH: 0 };
               return `<tr><td>${md(d)} (${yoil(d)})</td><td class="num">${fmt(row.TISTORY)}</td><td class="num">${fmt(row.VELOG)}</td><td class="num">${fmt(row.BRUNCH)}</td><td class="num">${fmt(row.TISTORY + row.VELOG + row.BRUNCH)}</td></tr>`;
-            }).join("")}</tbody>
-          </table>
-        `;
-
-        document.getElementById("pdf-ads").innerHTML = `
-          <h1>키워드 상세</h1>
-          <p class="pdf-sub">${pdfSub}</p>
-          <table class="pdf-kpis"><tr>
-            <td><div class="k">기간 노출</div><div class="v">${fmt(aPdf.impressions)}</div><div class="s ${dImp.cls}">${dImp.text}</div></td>
-            <td><div class="k">기간 클릭</div><div class="v">${fmt(aPdf.clicks)}</div><div class="s ${dClk.cls}">${dClk.text} · CTR ${fmt1(aPdf.ctr)}% · 전환 ${fmt(aPdf.conversions)}</div></td>
-            <td><div class="k">기간 비용</div><div class="v">${won(aPdf.cost)}</div><div class="s ${dCost.cls}">${dCost.text}</div></td>
-            <td><div class="k">평균 CPC</div><div class="v">${won(aPdf.cpc)}</div><div class="s">네이버 ${won(aPdf.byPlat.NAVER.cost)} · 구글 ${won(aPdf.byPlat.GOOGLE.cost)}</div></td>
-          </tr></table>
-          <div class="chart-cap">일별 노출 추이 · 클릭(선)</div>
-          ${svgChart({ rows: pdfAdsRows, keys: ["NAVER", "GOOGLE"], colors: adsColor, lines: ["NAVER", "GOOGLE"], lineColors: clickColor, ...pdfChart })}
-          ${legend([
-            { color: adsColor.NAVER, label: "네이버 노출" },
-            { color: adsColor.GOOGLE, label: "구글 노출" },
-            { color: clickColor.NAVER, label: "네이버 클릭", line: true },
-            { color: clickColor.GOOGLE, label: "구글 클릭", line: true },
-          ])}
-          <table class="pdf-grid"><tr>
-            <td>
-              <h2>캠페인</h2>
-              <table class="data">
-                <thead><tr><th>캠페인</th><th class="num">노출</th><th class="num">클릭</th><th class="num">CTR</th><th class="num">비용</th></tr></thead>
-                <tbody>${campsPdf.slice(0, 10).map((c) =>
-                  `<tr><td><span class="tag ${c.platform}">${platAds[c.platform]}</span>${c.name}</td><td class="num">${fmt(c.impressions)}</td><td class="num">${fmt(c.clicks)}</td><td class="num">${fmt1(c.ctr)}%</td><td class="num">${won(c.cost)}</td></tr>`
-                ).join("") || `<tr><td colspan="5">캠페인이 없습니다.</td></tr>`}</tbody>
-              </table>
-            </td>
-            <td>
-              <h2>티어시 키워드</h2>
-              <table class="data">
-                <thead><tr><th>키워드</th><th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th></tr></thead>
-                <tbody>${kwsPdf.filter((k) => k.desk === "tassi").slice(0, 8).map((k) =>
-                  `<tr><td><span class="tag ${k.platform}">${platAds[k.platform]}</span>${k.name}</td><td class="num">${fmt(k.impressions)}</td><td class="num">${fmt(k.clicks)}</td><td class="num">${won(k.cost)}</td></tr>`
-                ).join("") || `<tr><td colspan="4">키워드가 없습니다.</td></tr>`}</tbody>
-              </table>
-              <h2>티벨 QA 업체 키워드</h2>
-              <table class="data">
-                <thead><tr><th>키워드</th><th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th></tr></thead>
-                <tbody>${kwsPdf.filter((k) => k.desk === "tbell").slice(0, 8).map((k) =>
-                  `<tr><td><span class="tag ${k.platform}">${platAds[k.platform]}</span>${k.name}</td><td class="num">${fmt(k.impressions)}</td><td class="num">${fmt(k.clicks)}</td><td class="num">${won(k.cost)}</td></tr>`
-                ).join("") || `<tr><td colspan="4">키워드가 없습니다.</td></tr>`}</tbody>
-              </table>
-            </td>
-          </tr></table>
-        `;
-
-        document.getElementById("pdf-ads-days").innerHTML = `
-          <h1>키워드 일별 성과</h1>
-          <p class="pdf-sub">${pdfSub}</p>
-          <table class="data">
-            <thead><tr><th>날짜</th><th class="num">노출</th><th class="num">클릭</th><th class="num">비용</th></tr></thead>
-            <tbody>${daysPdf.map((d) => {
-              const ad = adsByDatePdf.get(d) || { impressions: 0, clicks: 0, cost: 0 };
-              return `<tr><td>${md(d)} (${yoil(d)})</td><td class="num">${fmt(ad.impressions)}</td><td class="num">${fmt(ad.clicks)}</td><td class="num">${won(ad.cost)}</td></tr>`;
             }).join("")}</tbody>
           </table>
         `;
