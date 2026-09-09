@@ -140,7 +140,7 @@ export async function waitUntil(
     return;
   }
   console.log(message);
-  console.log("이 크롬 창은 닫지 않습니다. 구글 로그인이 끝나면 세 블로그가 같은 세션을 씁니다.");
+  console.log("이 크롬 창은 닫지 않습니다. 로그인이 끝나면 같은 세션을 이어서 씁니다.");
   const started = Date.now();
   let lastPing = started;
   while (timeoutMs === 0 || Date.now() - started < timeoutMs) {
@@ -150,7 +150,7 @@ export async function waitUntil(
       return;
     }
     if (Date.now() - lastPing > 30_000) {
-      console.log("아직 로그인 대기 중… 창에서 구글 로그인을 마쳐 주세요.");
+      console.log(`아직 로그인 대기 중… ${message}`);
       lastPing = Date.now();
     }
     await page.waitForTimeout(1500);
